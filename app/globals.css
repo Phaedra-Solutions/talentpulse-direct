@@ -1,0 +1,87 @@
+@import "tailwindcss";
+
+@theme {
+  --color-paper: #F8F7F4;
+  --color-ink: #111113;
+  --color-accent: #FF4D00;
+  --font-syne: var(--font-syne), sans-serif;
+  --font-mono: var(--font-mono), monospace;
+  --font-sans: var(--font-sans), sans-serif;
+}
+
+:root {
+  --bg: #F8F7F4;
+  --ink: #111113;
+  --accent: #FF4D00;
+}
+
+body {
+  background-color: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-sans), sans-serif;
+  -webkit-font-smoothing: antialiased;
+  margin: 0;
+  padding: 0;
+  line-height: 1.5;
+}
+
+/* Typography Utility Classes */
+.font-syne {
+  font-family: var(--font-syne), sans-serif;
+}
+
+.font-mono {
+  font-family: var(--font-mono), monospace;
+}
+
+.font-sans {
+  font-family: var(--font-sans), sans-serif;
+}
+
+/* Variation 1 Core Elements */
+.editorial-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1px;
+  background-color: #111113;
+  border: 1px solid #111113;
+}
+
+.editorial-grid > div {
+  background-color: #F8F7F4;
+}
+
+.btn-brutalist {
+  padding: 0.875rem 1.75rem;
+  border: 2px solid #111113;
+  font-family: var(--font-mono), monospace;
+  text-transform: uppercase;
+  cursor: pointer;
+  font-size: 0.8rem;
+  letter-spacing: 0.08em;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  transition: all 0.15s ease-in-out;
+  background-color: transparent;
+  color: #111113;
+  font-weight: 700;
+}
+
+.btn-brutalist:hover {
+  background-color: #FF4D00;
+  color: #FFFFFF;
+  border-color: #FF4D00;
+}
+
+.btn-brutalist-primary {
+  background-color: #111113;
+  color: #F8F7F4;
+}
+
+.btn-brutalist-primary:hover {
+  background-color: #FF4D00;
+  color: #FFFFFF;
+  border-color: #FF4D00;
+}

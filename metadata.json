@@ -1,0 +1,6 @@
+{
+  "name": "TalentPulse Direct",
+  "description": "HR Talent Pipeline & Management Platform for Contractual & Project-Based Software, AI, and Forward Deployed Engineers (FDEs).",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
