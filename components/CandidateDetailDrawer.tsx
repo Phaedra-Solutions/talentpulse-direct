@@ -13,8 +13,8 @@ import {
   X, 
   Mail, 
   ExternalLink, 
-  Github, 
-  Linkedin, 
+  GitBranch, 
+  Briefcase, 
   Globe, 
   Clock, 
   DollarSign, 
@@ -202,7 +202,7 @@ export function CandidateDetailDrawer({
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-1 px-3 py-1.5 border border-[#111113] bg-white hover:bg-[#111113] hover:text-[#F8F7F4] transition-colors"
                 >
-                  <Linkedin className="w-3.5 h-3.5 text-[#FF4D00]" />
+                  <Briefcase className="w-3.5 h-3.5 text-[#FF4D00]" />
                   <span>LinkedIn</span>
                   <ExternalLink className="w-3 h-3 ml-0.5" />
                 </a>
@@ -215,7 +215,7 @@ export function CandidateDetailDrawer({
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-1 px-3 py-1.5 border border-[#111113] bg-white hover:bg-[#111113] hover:text-[#F8F7F4] transition-colors"
                 >
-                  <Github className="w-3.5 h-3.5" />
+                  <GitBranch className="w-3.5 h-3.5" />
                   <span>GitHub</span>
                   <ExternalLink className="w-3 h-3 ml-0.5" />
                 </a>

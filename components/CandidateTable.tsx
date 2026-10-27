@@ -16,8 +16,8 @@ import {
   ArrowUpDown, 
   Eye, 
   Mail, 
-  Linkedin, 
-  Github,
+  Briefcase, 
+  GitBranch,
   Phone,
   FileText
 } from 'lucide-react';
@@ -136,7 +136,7 @@ export function CandidateTable({
                           className="text-[#111113]/60 hover:text-[#FF4D00] transition"
                           title="LinkedIn Profile"
                         >
-                          <Linkedin className="w-3 h-3" />
+                          <Briefcase className="w-3 h-3" />
                         </a>
                       )}
                       {c.github_url && (
@@ -147,7 +147,7 @@ export function CandidateTable({
                           className="text-[#111113]/60 hover:text-[#111113] transition"
                           title="GitHub Profile"
                         >
-                          <Github className="w-3 h-3" />
+                          <GitBranch className="w-3 h-3" />
                         </a>
                       )}
                     </div>
