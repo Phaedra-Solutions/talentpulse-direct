@@ -31,7 +31,7 @@
     "clean": "next clean"
   },
   "dependencies": {
-    "@google/genai": "^2.4.0",
+    "@google/genai": "^2.31.0",
     "@hookform/resolvers": "^6.0.0",
     "@supabase/supabase-js": "^2.118.0",
     "autoprefixer": "^10.4.21",
