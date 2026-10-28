@@ -25,6 +25,14 @@ const syne = Syne({
 export const metadata: Metadata = {
   title: 'TalentPulse Direct | Global On-Demand Engineering Pool',
   description: 'On-Demand Engineering Pool for Contractual & Project-Based Software Engineers, AI Engineers, and Forward Deployed Engineers (FDEs). Pure delivery.',
+  icons: {
+    icon: [
+      { url: '/assets/aistudio/Favicon_2bbfcb3d.png', type: 'image/png' },
+      { url: '/favicon.ico' },
+    ],
+    shortcut: '/assets/aistudio/Favicon_2bbfcb3d.png',
+    apple: '/assets/aistudio/Favicon_2bbfcb3d.png',
+  },
   openGraph: {
     title: 'TalentPulse Direct | Global On-Demand Engineering Pool',
     description: 'Vetted Contractual & Project-Based Software, AI, and Forward Deployed Engineers with Client Timezone Overlap.',

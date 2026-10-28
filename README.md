@@ -66,7 +66,7 @@ Traditional applicant tracking software is clunky, hides critical technical data
 ## 🚀 Quickstart
 
 ### Prerequisites
-- **Node.js**: v18.17+ or v20+ (recommended)
+- **Node.js**: v22+ (LTS recommended)
 - **npm** (v9+), **pnpm**, or **bun**
 - A **Supabase** project (Cloud or local via Docker)
 - A **Google Gemini API Key** (optional, for AI candidate screening)
