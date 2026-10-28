@@ -78,7 +78,17 @@ export function ForbiddenView() {
 
       <footer className="px-4 sm:px-[4vw] py-8 font-mono text-xs border-t-2 border-[#111113] bg-[#F8F7F4]">
         <div className="max-w-7xl mx-auto flex justify-between">
-          <div className="uppercase">CONTRACTUAL INFRASTRUCTURE © 2024 / 2026</div>
+          <div className="uppercase">
+            <a
+              href="https://www.phaedrasolutions.com"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:text-[#FF4D00] transition-colors"
+            >
+              Phaedra Solutions
+            </a>{' '}
+            © 2024 / 2026
+          </div>
           <div className="flex gap-4">
             <Link href="/403" className="hover:text-[#FF4D00]">403</Link>
             <Link href="/errors/404" className="hover:text-[#FF4D00]">404</Link>

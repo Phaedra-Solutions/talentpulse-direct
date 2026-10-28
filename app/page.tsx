@@ -12,7 +12,12 @@ import {
   Terminal,
   Cpu,
   Smartphone,
-  CheckCircle2
+  CheckCircle2,
+  Linkedin,
+  Instagram,
+  AtSign,
+  Twitter,
+  Github
 } from 'lucide-react';
 import { Navbar } from '@/components/Navbar';
 import { getCandidatesList } from '@/lib/candidate-store';
@@ -285,22 +290,73 @@ export default function HomePage() {
       <footer className="mt-auto px-4 sm:px-[4vw] py-12 font-mono text-xs border-t-2 border-[#111113] bg-[#F8F7F4]">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-6">
           <div className="font-bold tracking-wider uppercase text-[#111113]">
-            CONTRACTUAL INFRASTRUCTURE © 2024 / 2026
+            <a
+              href="https://www.phaedrasolutions.com"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:text-[#FF4D00] transition-colors underline underline-offset-4 decoration-[#FF4D00]"
+            >
+              Phaedra Solutions
+            </a>{' '}
+            © 2024 / 2026
           </div>
 
           <div className="flex items-center gap-6 text-[#111113]/80 uppercase tracking-widest text-[11px]">
             <Link href="/" className="hover:text-[#FF4D00] transition-colors">Overview</Link>
-            <Link href="/apply" className="hover:text-[#FF4D00] transition-colors">Apply</Link>
-            <Link href="/candidate/update" className="hover:text-[#FF4D00] transition-colors">Availability</Link>
-            <Link href="/admin/dashboard" className="hover:text-[#FF4D00] transition-colors">Pipeline</Link>
+            <Link href="/candidate/update" className="hover:text-[#FF4D00] transition-colors">Candidate Portal</Link>
           </div>
 
-          <div className="flex items-center gap-4 font-mono font-bold">
-            <span className="text-[#111113]/40">[ERRORS:</span>
-            <Link href="/403" className="hover:text-[#FF4D00] transition-colors" title="403 Forbidden">403</Link>
-            <Link href="/errors/404" className="hover:text-[#FF4D00] transition-colors" title="404 Not Found">404</Link>
-            <Link href="/errors/500" className="hover:text-[#FF4D00] transition-colors" title="500 Server Error">500</Link>
-            <span className="text-[#111113]/40">]</span>
+          <div className="flex items-center gap-3 text-[#111113]">
+            <a
+              href="https://www.linkedin.com/company/phaedra-solutions"
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="LinkedIn"
+              title="LinkedIn"
+              className="p-2 border border-[#111113] hover:bg-[#111113] hover:text-[#F8F7F4] transition-colors"
+            >
+              <Linkedin className="w-4 h-4" />
+            </a>
+            <a
+              href="https://www.instagram.com/phaedrasolutions"
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="Instagram"
+              title="Instagram"
+              className="p-2 border border-[#111113] hover:bg-[#111113] hover:text-[#F8F7F4] transition-colors"
+            >
+              <Instagram className="w-4 h-4" />
+            </a>
+            <a
+              href="https://www.threads.net/@phaedrasolutions"
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="Threads"
+              title="Threads"
+              className="p-2 border border-[#111113] hover:bg-[#111113] hover:text-[#F8F7F4] transition-colors"
+            >
+              <AtSign className="w-4 h-4" />
+            </a>
+            <a
+              href="https://x.com/phaedrasolution"
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="X"
+              title="X"
+              className="p-2 border border-[#111113] hover:bg-[#111113] hover:text-[#F8F7F4] transition-colors"
+            >
+              <Twitter className="w-4 h-4" />
+            </a>
+            <a
+              href="https://github.com/phaedrasolutions"
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="GitHub"
+              title="GitHub"
+              className="p-2 border border-[#111113] hover:bg-[#111113] hover:text-[#F8F7F4] transition-colors"
+            >
+              <Github className="w-4 h-4" />
+            </a>
           </div>
         </div>
       </footer>

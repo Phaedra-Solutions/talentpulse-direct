@@ -13,9 +13,7 @@ export function Navbar() {
 
   const navLinks = [
     { href: '/', label: 'Overview' },
-    { href: '/apply', label: 'Apply' },
-    { href: '/candidate/update', label: 'Availability' },
-    { href: '/admin/dashboard', label: 'Pipeline' },
+    { href: '/candidate/update', label: 'Candidate Portal' },
   ];
 
   return (
@@ -33,13 +31,14 @@ export function Navbar() {
           </div>
 
           <div className="flex items-center gap-4 text-[10px]">
-            <button
-              onClick={() => setShowDbModal(true)}
-              className="inline-flex items-center gap-1.5 opacity-80 hover:opacity-100 transition-opacity uppercase cursor-pointer"
+            <a
+              href="https://www.phaedrasolutions.com"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 opacity-80 hover:opacity-100 hover:text-[#FF4D00] transition-colors uppercase font-mono tracking-wider"
             >
-              <span className={`w-2 h-2 ${isConnected ? 'bg-emerald-400' : 'bg-[#FF4D00]'}`} />
-              <span>{isConnected ? '[DB: SUPABASE LIVE]' : '[DB: LOCAL STORAGE ACTIVE]'}</span>
-            </button>
+              Powered by Phaedra Solutions
+            </a>
           </div>
         </div>
       </div>
@@ -79,12 +78,6 @@ export function Navbar() {
 
           {/* Right Action */}
           <div className="flex items-center gap-3">
-            <Link
-              href="/admin/dashboard"
-              className="hidden lg:inline-flex items-center font-mono text-[11px] tracking-wider uppercase px-3 py-2 border border-[#111113] hover:bg-[#111113] hover:text-[#F8F7F4] transition-colors"
-            >
-              Pipeline
-            </Link>
             <Link
               href="/apply"
               className="btn-brutalist btn-brutalist-primary text-xs py-2 px-4 sm:px-5"
