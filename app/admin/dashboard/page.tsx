@@ -24,6 +24,7 @@ import {
   canAccessHireRequests,
   canManageRolesAndTech,
   canManageAdminUsers,
+  canManageSeo,
   canExportCandidateData,
   getRoleBadgeInfo,
   updateHrUserSession
@@ -54,7 +55,8 @@ import {
   AlertTriangle,
   X,
   ShieldCheck,
-  ChevronDown
+  ChevronDown,
+  Globe
 } from 'lucide-react';
 
 export default function AdminDashboardPage() {
@@ -506,6 +508,18 @@ export default function AdminDashboardPage() {
               >
                 <Users className="w-3.5 h-3.5" />
                 <span>Admins</span>
+              </Link>
+            )}
+
+            {/* SEO & Tracking Suite: Visible only to Admin */}
+            {canManageSeo(hrUser.role) && (
+              <Link
+                href="/admin/seo"
+                className="btn-brutalist text-xs py-1.5 px-3 flex items-center gap-1.5"
+                title="Manage Global Meta, GTM Tracking, Schema.org, Robots and Sitemaps"
+              >
+                <Globe className="w-3.5 h-3.5 text-[#FF4D00]" />
+                <span>SEO &amp; Tracking</span>
               </Link>
             )}
 

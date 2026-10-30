@@ -24,25 +24,34 @@ import {
 import { Navbar } from '@/components/Navbar';
 import { Role } from '@/types/roles-tech';
 import { getRolesList } from '@/lib/roles-tech-store';
+import { getSeoSettings, FaqItem } from '@/lib/seo-service';
+import { FaqJsonLd } from '@/components/seo/StructuredData';
 
 export default function HomePage() {
   const [activeRoles, setActiveRoles] = useState<Role[]>([]);
   const [futureRoles, setFutureRoles] = useState<Role[]>([]);
+  const [faqs, setFaqs] = useState<FaqItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    async function loadRoles() {
+    async function loadData() {
       try {
-        const allRoles = await getRolesList(true);
+        const [allRoles, seo] = await Promise.all([
+          getRolesList(true),
+          getSeoSettings(),
+        ]);
         setActiveRoles(allRoles.filter(r => r.status === 'open'));
         setFutureRoles(allRoles.filter(r => r.status === 'closed'));
+        if (seo && Array.isArray(seo.faq_items)) {
+          setFaqs(seo.faq_items.filter(f => f.is_active));
+        }
       } catch (err) {
-        console.error('Failed to load roles for overview', err);
+        console.error('Failed to load overview data', err);
       } finally {
         setIsLoading(false);
       }
     }
-    loadRoles();
+    loadData();
   }, []);
 
   return (
@@ -297,6 +306,47 @@ export default function HomePage() {
           </div>
         </div>
       </section>
+
+      {/* JSON-LD Structured Data for FAQs */}
+      <FaqJsonLd faqs={faqs} />
+
+      {/* Frequently Asked Questions Section (Schema-supported) */}
+      {faqs.length > 0 && (
+        <section className="px-4 sm:px-[4vw] py-16 sm:py-24 border-b-2 border-[#111113] bg-white">
+          <div className="max-w-5xl mx-auto">
+            <div className="font-mono text-xs uppercase tracking-widest text-[#FF4D00] font-bold mb-3">
+              [FREQUENTLY ASKED QUESTIONS]
+            </div>
+            <h3 className="text-3xl sm:text-4xl font-syne font-black tracking-tight text-[#111113] mb-4">
+              Everything You Need to Know About TalentPulse
+            </h3>
+            <p className="text-sm font-mono text-[#111113]/60 mb-12 max-w-2xl">
+              Transparent terms, rigorous vetting metrics, and zero-risk trial structures designed for high-velocity engineering organizations.
+            </p>
+
+            <div className="divide-y-2 divide-[#111113] border-y-2 border-[#111113]">
+              {faqs.map((faq, idx) => (
+                <details key={faq.id || idx} className="group py-6 cursor-pointer">
+                  <summary className="flex items-center justify-between font-syne font-bold text-lg sm:text-xl text-[#111113] list-none select-none">
+                    <span className="flex items-start gap-4">
+                      <span className="font-mono text-sm text-[#FF4D00] mt-1 font-bold">
+                        {String(idx + 1).padStart(2, '0')}.
+                      </span>
+                      <span>{faq.question}</span>
+                    </span>
+                    <span className="ml-4 font-mono text-xl font-bold text-[#FF4D00] transition-transform duration-200 group-open:rotate-45">
+                      +
+                    </span>
+                  </summary>
+                  <div className="mt-4 pl-10 text-sm text-[#111113]/75 leading-relaxed font-sans max-w-3xl">
+                    {faq.answer}
+                  </div>
+                </details>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
 
       {/* Footer */}
       <footer className="mt-auto px-4 sm:px-[4vw] py-12 font-mono text-xs border-t-2 border-[#111113] bg-[#F8F7F4]">

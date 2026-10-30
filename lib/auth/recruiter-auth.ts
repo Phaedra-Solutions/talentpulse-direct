@@ -63,6 +63,11 @@ export function canExportHireRequests(role?: string): boolean {
   return ['super_admin', 'admin'].includes(role);
 }
 
+export function canManageSeo(role?: string): boolean {
+  if (!role) return false;
+  return ['super_admin', 'admin'].includes(role);
+}
+
 export function getRoleBadgeInfo(role?: string): { label: string; badgeClass: string; description: string } {
   switch (role) {
     case 'super_admin':
