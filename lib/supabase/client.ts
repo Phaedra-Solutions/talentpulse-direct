@@ -37,3 +37,5 @@ export function getSupabaseBrowserClient(): SupabaseClient | null {
 
   return clientInstance;
 }
+
+export const supabase = getSupabaseBrowserClient();

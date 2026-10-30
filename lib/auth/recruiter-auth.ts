@@ -2,11 +2,13 @@
 
 import { getSupabaseBrowserClient, isSupabaseConfigured } from '@/lib/supabase/client';
 
+export type RecruiterRole = 'super_admin' | 'admin' | 'sales_executive' | 'hr_executive' | 'recruiter' | 'hr_lead';
+
 export interface HrUser {
   id: string;
   email: string;
   name: string;
-  role: 'super_admin' | 'hr_lead' | 'recruiter' | 'admin';
+  role: RecruiterRole;
   must_change_password?: boolean;
 }
 
@@ -22,6 +24,73 @@ export const AUTHORIZED_HR_DOMAINS = ['talentpulse.com'];
 export function isEmailAuthorizedForHr(email: string): boolean {
   if (!email || !email.includes('@')) return false;
   return true;
+}
+
+/**
+ * Access control permissions based on user role
+ */
+export function canAccessCandidatePipeline(role?: string): boolean {
+  return true; // Admin, Super Admin, Sales Executive, HR Executive
+}
+
+export function canAccessHireRequests(role?: string): boolean {
+  if (!role) return false;
+  return ['super_admin', 'admin', 'sales_executive'].includes(role);
+}
+
+export function canManageRolesAndTech(role?: string): boolean {
+  if (!role) return false;
+  return ['super_admin', 'admin', 'hr_executive'].includes(role);
+}
+
+export function canManageAdminUsers(role?: string): boolean {
+  if (!role) return false;
+  return ['super_admin', 'admin'].includes(role);
+}
+
+export function canExportCandidateData(role?: string): boolean {
+  if (!role) return false;
+  // Sales executives CANNOT export candidate data.
+  // HR Executives can export candidate data in bulk as excel.
+  // Admins can export candidate data.
+  return ['super_admin', 'admin', 'hr_executive', 'recruiter', 'hr_lead'].includes(role);
+}
+
+export function canExportHireRequests(role?: string): boolean {
+  if (!role) return false;
+  // Sales executives CANNOT export any data.
+  // Admins can export hire requests.
+  return ['super_admin', 'admin'].includes(role);
+}
+
+export function getRoleBadgeInfo(role?: string): { label: string; badgeClass: string; description: string } {
+  switch (role) {
+    case 'super_admin':
+      return {
+        label: 'Super Admin',
+        badgeClass: 'bg-[#111113] text-[#F8F7F4] border-[#111113]',
+        description: 'Unrestricted system access across all pipelines, hire requests, roles configuration, and user permissions.',
+      };
+    case 'sales_executive':
+      return {
+        label: 'Sales Executive',
+        badgeClass: 'bg-indigo-700 text-white border-indigo-700',
+        description: 'Candidate pipeline & customer hire requests management. Exporting data is restricted.',
+      };
+    case 'hr_executive':
+      return {
+        label: 'HR Executive',
+        badgeClass: 'bg-emerald-700 text-white border-emerald-700',
+        description: 'Candidate pipeline management, bulk XLSX candidate export, and Roles & Technologies administration.',
+      };
+    case 'admin':
+    default:
+      return {
+        label: 'Admin',
+        badgeClass: 'bg-[#FF4D00] text-white border-[#FF4D00]',
+        description: 'Full administrative access across candidates, client requests, roles & tech, and admin users.',
+      };
+  }
 }
 
 /**

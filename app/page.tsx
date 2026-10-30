@@ -17,38 +17,39 @@ import {
   Instagram,
   AtSign,
   Twitter,
-  Github
+  Github,
+  Sparkles,
+  ExternalLink
 } from 'lucide-react';
 import { Navbar } from '@/components/Navbar';
-import { getCandidatesList } from '@/lib/candidate-store';
-import { CandidateCard } from '@/components/CandidateCard';
-import { CandidateDetailDrawer } from '@/components/CandidateDetailDrawer';
-import { Candidate, PipelineStage } from '@/types/candidate';
+import { Role } from '@/types/roles-tech';
+import { getRolesList } from '@/lib/roles-tech-store';
 
 export default function HomePage() {
-  const [sampleCandidates, setSampleCandidates] = useState<Candidate[]>([]);
-  const [selectedCandidate, setSelectedCandidate] = useState<Candidate | null>(null);
-  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [activeRoles, setActiveRoles] = useState<Role[]>([]);
+  const [futureRoles, setFutureRoles] = useState<Role[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    async function loadSample() {
-      const { candidates } = await getCandidatesList();
-      setSampleCandidates(candidates.slice(0, 3));
+    async function loadRoles() {
+      try {
+        const allRoles = await getRolesList(true);
+        setActiveRoles(allRoles.filter(r => r.status === 'open'));
+        setFutureRoles(allRoles.filter(r => r.status === 'closed'));
+      } catch (err) {
+        console.error('Failed to load roles for overview', err);
+      } finally {
+        setIsLoading(false);
+      }
     }
-    loadSample();
+    loadRoles();
   }, []);
-
-  const handleStageChange = async (id: string, stage: PipelineStage, notes: string) => {
-    const { updateCandidateStageAndNotesRecord } = await import('@/lib/candidate-store');
-    await updateCandidateStageAndNotesRecord(id, stage, notes);
-    setSampleCandidates(prev => prev.map(c => c.id === id ? { ...c, pipeline_stage: stage, internal_notes: notes } : c));
-  };
 
   return (
     <div className="min-h-screen bg-[#F8F7F4] text-[#111113] flex flex-col font-sans selection:bg-[#FF4D00] selection:text-white">
       <Navbar />
 
-      {/* Hero Section - Variation 1 Editorial Brutalist */}
+      {/* Hero Section - Editorial Brutalist */}
       <section className="px-4 sm:px-[4vw] py-16 sm:py-24 border-b-2 border-[#111113] relative overflow-hidden">
         <div className="max-w-7xl mx-auto">
           {/* Metadata Tagline */}
@@ -60,7 +61,7 @@ export default function HomePage() {
             <span>[NO PERMANENT PLACEMENTS]</span>
           </div>
 
-          {/* Huge Syne Display Heading */}
+          {/* Syne Display Heading */}
           <h1 className="font-syne font-extrabold text-[clamp(2.75rem,7.5vw,7.5rem)] leading-[0.92] tracking-[-0.04em] text-[#111113] uppercase mb-8">
             GLOBAL ON-DEMAND<br />
             <span className="text-[#111113]">ENGINEERING POOL</span>
@@ -72,9 +73,13 @@ export default function HomePage() {
             </p>
 
             <div className="flex flex-wrap items-center gap-4">
-              <Link href="/apply" className="btn-brutalist btn-brutalist-primary">
-                <span>Join Talent Pool</span>
+              <Link href="/hire" className="btn-brutalist btn-brutalist-primary">
+                <span>Hire Contract Talent</span>
                 <ArrowRight className="w-4 h-4" />
+              </Link>
+
+              <Link href="/apply" className="btn-brutalist">
+                <span>Join Talent Pool</span>
               </Link>
 
               <Link href="/candidate/update" className="btn-brutalist">
@@ -113,130 +118,137 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* Tracks Section - Variation 1 Specification */}
+      {/* ACTIVE TRACKS SECTION (Open Roles Only) */}
       <section className="px-4 sm:px-[4vw] py-16 sm:py-20 border-b-2 border-[#111113]">
         <div className="max-w-7xl mx-auto">
           <div className="flex flex-col sm:flex-row sm:items-baseline justify-between mb-10 gap-4">
             <div>
-              <div className="font-mono text-xs uppercase tracking-widest text-[#FF4D00] mb-2 font-bold">
-                [SPECIALIZATIONS]
+              <div className="font-mono text-xs uppercase tracking-widest text-[#FF4D00] mb-2 font-bold flex items-center gap-2">
+                <span className="w-2 h-2 bg-[#FF4D00] inline-block animate-pulse" />
+                <span>[ACTIVE TRACKS • IMMEDIATE ENGAGEMENTS]</span>
               </div>
               <h2 className="font-syne font-extrabold text-4xl sm:text-5xl text-[#111113] tracking-tight">
-                Tracks
+                Specialized Engineering Tracks
               </h2>
             </div>
             <p className="font-mono text-xs text-[#111113]/70 uppercase tracking-wider max-w-md">
-              Screened for high-concurrency production competence, timezone overlap, and direct English communication.
+              Screened for high-concurrency production competence, timezone overlap, and direct English communication. Click any tile to inspect full specifications.
             </p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-px bg-[#111113] border-2 border-[#111113]">
-            {/* Track 01 */}
-            <div className="bg-[#F8F7F4] p-6 sm:p-8 flex flex-col justify-between group hover:bg-white transition-colors">
-              <div>
-                <div className="font-mono text-xs uppercase tracking-widest text-[#FF4D00] font-bold mb-4">[01]</div>
-                <h3 className="font-syne font-bold text-2xl text-[#111113] mb-3 group-hover:text-[#FF4D00] transition-colors">
-                  AI &amp; LLM Engineers
-                </h3>
-                <p className="text-sm text-[#111113]/80 leading-relaxed font-sans mb-6">
-                  Fine-tuning models and high-throughput inference. Multi-agent workflows, vLLM microservices, and specialized RAG pipelines.
-                </p>
-              </div>
-              <div className="border-t border-[#111113]/20 pt-4 font-mono text-[11px] text-[#111113]/60 uppercase">
-                PyTorch • vLLM • LoRA • Triton
-              </div>
-            </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-px bg-[#111113] border-2 border-[#111113]">
+            {activeRoles.map((role, idx) => {
+              const coreTechs = (role.technologies || [])
+                .filter(t => t.is_featured)
+                .slice(0, 5)
+                .map(t => t.name);
 
-            {/* Track 02 */}
-            <div className="bg-[#F8F7F4] p-6 sm:p-8 flex flex-col justify-between group hover:bg-white transition-colors">
-              <div>
-                <div className="font-mono text-xs uppercase tracking-widest text-[#FF4D00] font-bold mb-4">[02]</div>
-                <h3 className="font-syne font-bold text-2xl text-[#111113] mb-3 group-hover:text-[#FF4D00] transition-colors">
-                  Forward Deployed
-                </h3>
-                <p className="text-sm text-[#111113]/80 leading-relaxed font-sans mb-6">
-                  Embed with enterprise clients to build integrations. Direct customer engineering, API conduits, and bespoke micro-apps.
-                </p>
-              </div>
-              <div className="border-t border-[#111113]/20 pt-4 font-mono text-[11px] text-[#111113]/60 uppercase">
-                Go • Python • K8s • Webhooks
-              </div>
-            </div>
+              const displayTechs = coreTechs.length > 0
+                ? coreTechs.join(' • ')
+                : (role.technologies || []).slice(0, 4).map(t => t.name).join(' • ');
 
-            {/* Track 03 */}
-            <div className="bg-[#F8F7F4] p-6 sm:p-8 flex flex-col justify-between group hover:bg-white transition-colors">
-              <div>
-                <div className="font-mono text-xs uppercase tracking-widest text-[#FF4D00] font-bold mb-4">[03]</div>
-                <h3 className="font-syne font-bold text-2xl text-[#111113] mb-3 group-hover:text-[#FF4D00] transition-colors">
-                  Mobile Developers
-                </h3>
-                <p className="text-sm text-[#111113]/80 leading-relaxed font-sans mb-6">
-                  High-performance apps for all platforms. Offline-first architectures, low-latency audio/video streaming, and mobile SDKs.
-                </p>
-              </div>
-              <div className="border-t border-[#111113]/20 pt-4 font-mono text-[11px] text-[#111113]/60 uppercase">
-                React Native • Swift • Kotlin
-              </div>
-            </div>
+              return (
+                <Link
+                  key={role.id}
+                  href={`/roles/${role.slug}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="bg-[#F8F7F4] p-6 sm:p-8 flex flex-col justify-between group hover:bg-white transition-all relative cursor-pointer"
+                >
+                  <div>
+                    <div className="flex items-center justify-between mb-4 font-mono text-xs uppercase tracking-widest font-bold">
+                      <span className="text-[#FF4D00]">[0{idx + 1}]</span>
+                      <span className="text-[#111113]/60 group-hover:text-[#FF4D00] transition-colors flex items-center gap-1 text-[11px]">
+                        <span>Specification</span>
+                        <ExternalLink className="w-3.5 h-3.5" />
+                      </span>
+                    </div>
 
-            {/* Track 04 */}
-            <div className="bg-[#F8F7F4] p-6 sm:p-8 flex flex-col justify-between group hover:bg-white transition-colors">
-              <div>
-                <div className="font-mono text-xs uppercase tracking-widest text-[#FF4D00] font-bold mb-4">[04]</div>
-                <h3 className="font-syne font-bold text-2xl text-[#111113] mb-3 group-hover:text-[#FF4D00] transition-colors">
-                  Solutions Architects
-                </h3>
-                <p className="text-sm text-[#111113]/80 leading-relaxed font-sans mb-6">
-                  Cloud infrastructure and scalable microservices. Multi-region redundancy, distributed event messaging, and database clustering.
-                </p>
-              </div>
-              <div className="border-t border-[#111113]/20 pt-4 font-mono text-[11px] text-[#111113]/60 uppercase">
-                AWS • GCP • Terraform • Kafka
-              </div>
-            </div>
+                    <h3 className="font-syne font-bold text-2xl text-[#111113] mb-3 group-hover:text-[#FF4D00] transition-colors">
+                      {role.title}
+                    </h3>
+
+                    <p className="text-sm text-[#111113]/80 leading-relaxed font-sans mb-6">
+                      {role.short_description}
+                    </p>
+                  </div>
+
+                  <div className="border-t border-[#111113]/20 pt-4 font-mono text-[11px] text-[#111113]/60 uppercase flex items-center justify-between">
+                    <span className="truncate pr-2">{displayTechs || 'Multi-stack verified'}</span>
+                    <ArrowRight className="w-3.5 h-3.5 shrink-0 text-[#111113]/40 group-hover:text-[#FF4D00] group-hover:translate-x-1 transition-all" />
+                  </div>
+                </Link>
+              );
+            })}
           </div>
         </div>
       </section>
 
-      {/* Featured Talent Dossiers */}
-      <section className="px-4 sm:px-[4vw] py-16 sm:py-20 border-b-2 border-[#111113]">
-        <div className="max-w-7xl mx-auto">
-          <div className="flex flex-col sm:flex-row sm:items-end justify-between mb-10 gap-4">
-            <div>
-              <div className="font-mono text-xs uppercase tracking-widest text-[#FF4D00] mb-2 font-bold">
-                [LIVE TALENT STREAM]
+      {/* FUTURE TRACKS SECTION (Closed Roles) */}
+      {futureRoles.length > 0 && (
+        <section className="px-4 sm:px-[4vw] py-16 sm:py-20 border-b-2 border-[#111113] bg-[#F2F0EB]">
+          <div className="max-w-7xl mx-auto">
+            <div className="flex flex-col sm:flex-row sm:items-baseline justify-between mb-10 gap-4">
+              <div>
+                <div className="font-mono text-xs uppercase tracking-widest text-[#111113]/70 mb-2 font-bold flex items-center gap-2">
+                  <Sparkles className="w-3.5 h-3.5 text-[#FF4D00]" />
+                  <span>[FUTURE TRACKS • UPCOMING TALENT POOLS]</span>
+                </div>
+                <h2 className="font-syne font-extrabold text-3xl sm:text-4xl text-[#111113] tracking-tight">
+                  Upcoming Strategic Specializations
+                </h2>
               </div>
-              <h2 className="font-syne font-extrabold text-3xl sm:text-4xl text-[#111113]">
-                Available Contract Engineers
-              </h2>
-              <p className="font-mono text-xs text-[#111113]/70 uppercase tracking-wider mt-2">
-                Click any dossier to open technical artifacts, video walkthroughs, and hourly contract rates.
+              <p className="font-mono text-xs text-[#111113]/70 uppercase tracking-wider max-w-md">
+                Pre-registering elite practitioners for forthcoming client mandates. Applications are reviewed for early onboarding.
               </p>
             </div>
 
-            <Link
-              href="/admin/dashboard"
-              className="inline-flex items-center gap-2 font-mono text-xs uppercase tracking-widest font-bold text-[#111113] hover:text-[#FF4D00] transition-colors"
-            >
-              <span>View Full Pipeline</span>
-              <ArrowUpRight className="w-4 h-4" />
-            </Link>
-          </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-px bg-[#111113] border-2 border-[#111113]">
+              {futureRoles.map((role) => {
+                const coreTechs = (role.technologies || [])
+                  .slice(0, 4)
+                  .map(t => t.name)
+                  .join(' • ');
 
-          <div className="grid md:grid-cols-3 gap-6">
-            {sampleCandidates.map((candidate) => (
-              <CandidateCard
-                key={candidate.id}
-                candidate={candidate}
-                onSelect={(cand) => {
-                  setSelectedCandidate(cand);
-                  setIsDrawerOpen(true);
-                }}
-              />
-            ))}
+                return (
+                  <Link
+                    key={role.id}
+                    href={`/roles/${role.slug}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="bg-white/80 p-6 sm:p-8 flex flex-col justify-between group hover:bg-white transition-all cursor-pointer border-dashed"
+                  >
+                    <div>
+                      <div className="flex items-center justify-between mb-4 font-mono text-[10px] uppercase tracking-widest font-bold">
+                        <span className="bg-amber-100 text-amber-900 border border-amber-300 px-2 py-0.5">
+                          Future Track
+                        </span>
+                        <span className="text-[#111113]/60 group-hover:text-[#FF4D00] transition-colors flex items-center gap-1">
+                          <span>Details</span>
+                          <ExternalLink className="w-3 h-3" />
+                        </span>
+                      </div>
+
+                      <h3 className="font-syne font-bold text-2xl text-[#111113] mb-3 group-hover:text-[#FF4D00] transition-colors">
+                        {role.title}
+                      </h3>
+
+                      <p className="text-sm text-[#111113]/80 leading-relaxed font-sans mb-6">
+                        {role.short_description}
+                      </p>
+                    </div>
+
+                    <div className="border-t border-[#111113]/20 pt-4 font-mono text-[11px] text-[#111113]/60 uppercase flex items-center justify-between">
+                      <span className="truncate pr-2">{coreTechs || 'Curated roadmap'}</span>
+                      <ArrowRight className="w-3.5 h-3.5 shrink-0 text-[#111113]/40 group-hover:text-[#FF4D00] group-hover:translate-x-1 transition-all" />
+                    </div>
+                  </Link>
+                );
+              })}
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
+      )}
 
       {/* Vetting Protocol Section */}
       <section className="px-4 sm:px-[4vw] py-16 sm:py-20 border-b-2 border-[#111113]">
@@ -286,7 +298,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* Footer - Variation 1 Exact Specification */}
+      {/* Footer */}
       <footer className="mt-auto px-4 sm:px-[4vw] py-12 font-mono text-xs border-t-2 border-[#111113] bg-[#F8F7F4]">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-6">
           <div className="font-bold tracking-wider uppercase text-[#111113]">
@@ -360,14 +372,6 @@ export default function HomePage() {
           </div>
         </div>
       </footer>
-
-      {/* Candidate Dossier Drawer */}
-      <CandidateDetailDrawer
-        candidate={selectedCandidate}
-        isOpen={isDrawerOpen}
-        onClose={() => setIsDrawerOpen(false)}
-        onStageChange={handleStageChange}
-      />
     </div>
   );
 }

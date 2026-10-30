@@ -8,7 +8,10 @@ import {
   getCurrentHrUser, 
   signOutHrRecruiter, 
   HrUser,
-  AUTHORIZED_ADMIN_EMAIL
+  RecruiterRole,
+  AUTHORIZED_ADMIN_EMAIL,
+  canManageAdminUsers,
+  getRoleBadgeInfo
 } from '@/lib/auth/recruiter-auth';
 import { 
   Users, 
@@ -31,14 +34,16 @@ import {
   SlidersHorizontal,
   Mail,
   UserCheck,
-  UserX
+  UserX,
+  Briefcase,
+  Cpu
 } from 'lucide-react';
 
 interface AdminUserItem {
   id: string;
   email: string;
   full_name: string;
-  role: 'super_admin' | 'admin' | 'recruiter';
+  role: RecruiterRole;
   is_active: boolean;
   last_login_at: string | null;
   created_at: string;
@@ -60,14 +65,14 @@ export default function AdminUsersManagementPage() {
   const [users, setUsers] = useState<AdminUserItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [roleFilter, setRoleFilter] = useState<'all' | 'super_admin' | 'admin' | 'recruiter'>('all');
+  const [roleFilter, setRoleFilter] = useState<'all' | RecruiterRole>('all');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
 
   // Modal State for Add User
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [newName, setNewName] = useState('');
   const [newEmail, setNewEmail] = useState('');
-  const [newRole, setNewRole] = useState<'super_admin' | 'admin' | 'recruiter'>('admin');
+  const [newRole, setNewRole] = useState<RecruiterRole>('admin');
   const [newIsActive, setNewIsActive] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
@@ -109,6 +114,11 @@ export default function AdminUsersManagementPage() {
       return;
     }
 
+    if (currentUser && !canManageAdminUsers(currentUser.role)) {
+      router.replace('/admin/dashboard?unauthorized=users');
+      return;
+    }
+
     let isCancelled = false;
     fetch('/api/admin/users')
       .then((res) => res.json())
@@ -128,7 +138,7 @@ export default function AdminUsersManagementPage() {
     return () => {
       isCancelled = true;
     };
-  }, [isAuthorized, router]);
+  }, [isAuthorized, currentUser, router]);
 
   // Helper to generate full invite URL
   const buildInviteUrl = (token: string) => {
@@ -358,16 +368,33 @@ export default function AdminUsersManagementPage() {
           <div className="flex items-center gap-2 flex-wrap font-mono text-xs">
             <Link
               href="/admin/dashboard"
-              className="btn-brutalist py-2 px-3 text-xs"
+              className="btn-brutalist py-1.5 px-3 text-xs flex items-center gap-1.5"
             >
-              Pipeline Dashboard
+              <Users className="w-3.5 h-3.5" />
+              <span>Candidates</span>
+            </Link>
+            <Link
+              href="/admin/hire-requests"
+              className="btn-brutalist py-1.5 px-3 text-xs flex items-center gap-1.5"
+              title="Review client hire requests and manage offline outreach"
+            >
+              <Briefcase className="w-3.5 h-3.5" />
+              <span>Hire Requests</span>
+            </Link>
+            <Link
+              href="/admin/roles"
+              className="btn-brutalist py-1.5 px-3 text-xs flex items-center gap-1.5"
+              title="Manage dynamic roles, open/closed status, and technologies moderation"
+            >
+              <Cpu className="w-3.5 h-3.5" />
+              <span>Roles &amp; Tech</span>
             </Link>
             <button
               onClick={() => setIsAddModalOpen(true)}
-              className="btn-brutalist btn-brutalist-primary py-2 px-4 text-xs font-bold flex items-center gap-1.5"
+              className="btn-brutalist btn-brutalist-primary py-1.5 px-3 text-xs font-bold flex items-center gap-1.5"
             >
               <UserPlus className="w-4 h-4" />
-              <span>Add Administrator</span>
+              <span>Add User</span>
             </button>
             <button
               onClick={fetchUsers}
@@ -448,9 +475,10 @@ export default function AdminUsersManagementPage() {
                 className="px-3 py-2.5 border-2 border-[#111113] bg-[#F8F7F4] text-[#111113] font-bold focus:outline-hidden"
               >
                 <option value="all">All Roles</option>
-                <option value="super_admin">Super Admin</option>
                 <option value="admin">Admin</option>
-                <option value="recruiter">Recruiter</option>
+                <option value="sales_executive">Sales Executive</option>
+                <option value="hr_executive">HR Executive</option>
+                <option value="super_admin">Super Admin</option>
               </select>
 
               <select
@@ -491,6 +519,7 @@ export default function AdminUsersManagementPage() {
                   filteredUsers.map((user) => {
                     const isSuper = user.role === 'super_admin';
                     const isCurrent = currentUser?.email === user.email;
+                    const roleInfo = getRoleBadgeInfo(user.role);
 
                     return (
                       <tr key={user.id} className="hover:bg-[#F8F7F4] transition-colors">
@@ -509,14 +538,17 @@ export default function AdminUsersManagementPage() {
 
                         {/* Role */}
                         <td className="py-3.5 px-4 font-mono">
-                          <span className={`inline-block px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider border ${
-                            user.role === 'super_admin'
-                              ? 'bg-[#111113] text-[#F8F7F4] border-[#111113]'
+                          <span className={`inline-block px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider border ${roleInfo.badgeClass}`}>
+                            {roleInfo.label}
+                          </span>
+                          <span className="block text-[10px] text-[#111113]/60 max-w-[200px] leading-tight mt-0.5">
+                            {user.role === 'sales_executive'
+                              ? 'Pipeline & Hire Requests (No Exports)'
+                              : user.role === 'hr_executive'
+                              ? 'Pipeline, XLSX Export & Roles/Tech'
                               : user.role === 'admin'
-                              ? 'bg-[#FF4D00] text-white border-[#FF4D00]'
-                              : 'bg-white text-[#111113] border-[#111113]'
-                          }`}>
-                            {user.role.replace('_', ' ')}
+                              ? 'Full Admin Access'
+                              : 'Root Super Admin'}
                           </span>
                         </td>
 
@@ -660,7 +692,7 @@ export default function AdminUsersManagementPage() {
               </div>
 
               <div className="grid grid-cols-2 gap-3">
-                <div>
+                <div className="col-span-2 sm:col-span-1">
                   <label className="block font-mono text-xs uppercase font-bold text-[#111113] mb-1">
                     Clearance Role
                   </label>
@@ -669,10 +701,17 @@ export default function AdminUsersManagementPage() {
                     onChange={(e) => setNewRole(e.target.value as any)}
                     className="w-full font-mono text-xs px-3 py-2.5 border-2 border-[#111113] bg-white text-[#111113] font-bold focus:outline-hidden"
                   >
-                    <option value="admin">Admin</option>
-                    <option value="recruiter">Recruiter</option>
-                    <option value="super_admin">Super Admin</option>
+                    <option value="admin">Admin (Full Unrestricted Access)</option>
+                    <option value="sales_executive">Sales Executive (Pipeline &amp; Hire Requests; No Exports)</option>
+                    <option value="hr_executive">HR Executive (Pipeline, Bulk XLSX Export &amp; Roles/Tech)</option>
+                    <option value="super_admin">Super Admin (Primary Root Clearance)</option>
                   </select>
+                  <p className="text-[10px] font-mono text-[#111113]/70 mt-1 leading-tight">
+                    {newRole === 'sales_executive' && 'Permitted: Candidate Pipeline & Customer Hire Requests. Strictly cannot export data or manage roles/users.'}
+                    {newRole === 'hr_executive' && 'Permitted: Candidate Pipeline, Bulk XLSX Excel Candidate Export & Roles & Technologies. Cannot access Hire Requests or Users.'}
+                    {newRole === 'admin' && 'Permitted: Full unrestricted access across all pipelines, customer hire requests, roles configuration, and admin clearance.'}
+                    {newRole === 'super_admin' && 'Root clearance across all modules and user management.'}
+                  </p>
                 </div>
 
                 <div>

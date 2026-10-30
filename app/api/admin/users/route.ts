@@ -29,11 +29,31 @@ export async function GET(req: NextRequest) {
           {
             id: 'admin-master',
             email: DESIGNATED_ADMIN_EMAIL,
-            full_name: 'Admin',
+            full_name: 'Super Administrator',
             role: 'super_admin',
             is_active: true,
             last_login_at: new Date().toISOString(),
-            created_at: new Date().toISOString(),
+            created_at: new Date(Date.now() - 30 * 86400000).toISOString(),
+            must_change_password: false,
+          },
+          {
+            id: 'sales-lead-01',
+            email: 'sales@talentpulse.com',
+            full_name: 'Marcus Vance (Sales Executive)',
+            role: 'sales_executive',
+            is_active: true,
+            last_login_at: new Date(Date.now() - 2 * 86400000).toISOString(),
+            created_at: new Date(Date.now() - 14 * 86400000).toISOString(),
+            must_change_password: false,
+          },
+          {
+            id: 'hr-lead-01',
+            email: 'hr@talentpulse.com',
+            full_name: 'Sofia Chen (HR Executive)',
+            role: 'hr_executive',
+            is_active: true,
+            last_login_at: new Date(Date.now() - 1 * 86400000).toISOString(),
+            created_at: new Date(Date.now() - 10 * 86400000).toISOString(),
             must_change_password: false,
           }
         ],
@@ -104,7 +124,7 @@ export async function POST(req: NextRequest) {
     }
 
     const normalizedEmail = email.trim().toLowerCase();
-    const cleanRole = ['super_admin', 'admin', 'recruiter'].includes(role) ? role : 'admin';
+    const cleanRole = ['super_admin', 'admin', 'sales_executive', 'hr_executive', 'recruiter'].includes(role) ? role : 'admin';
 
     // Generate credentials
     const salt = generateSalt();
@@ -231,7 +251,7 @@ export async function PATCH(req: NextRequest) {
       updates.full_name = full_name.trim();
     }
 
-    if (role && ['super_admin', 'admin', 'recruiter'].includes(role)) {
+    if (role && ['super_admin', 'admin', 'sales_executive', 'hr_executive', 'recruiter'].includes(role)) {
       updates.role = role;
     }
 

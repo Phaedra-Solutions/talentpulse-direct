@@ -1,14 +1,13 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { useForm } from 'react-hook-form';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { 
   candidateApplicationSchema, 
   CandidateApplicationFormValues, 
-  PrimaryRole, 
   WorkMode, 
   TargetRegion, 
   AvailabilityStatus, 
@@ -17,7 +16,11 @@ import {
   TIMEZONE_OPTIONS
 } from '@/types/candidate';
 import { createCandidateRecord } from '@/lib/candidate-store';
+import { Role, Technology } from '@/types/roles-tech';
+import { getRolesList, getTopTechnologiesForRole } from '@/lib/roles-tech-store';
 import { Navbar } from '@/components/Navbar';
+import { TechAutocomplete } from '@/components/TechAutocomplete';
+import { PhoneInputWithCountry } from '@/components/PhoneInputWithCountry';
 import { 
   CheckCircle2, 
   ArrowRight, 
@@ -29,36 +32,38 @@ import {
   Clock, 
   Video, 
   Terminal, 
-  AlertCircle,
-  Check,
-  Phone,
-  FileText,
-  UploadCloud,
-  X,
-  FileCheck
+  AlertCircle, 
+  Check, 
+  Phone, 
+  FileText, 
+  UploadCloud, 
+  X, 
+  FileCheck,
+  Info,
+  ExternalLink
 } from 'lucide-react';
 
-const COMMON_TECH_STACK = [
-  'Python', 'PyTorch', 'vLLM', 'LangChain', 'LlamaIndex', 
-  'React Native', 'Swift', 'Kotlin', 'Flutter', 'iOS', 'Android',
-  'AWS', 'GCP', 'Terraform', 'Kubernetes', 'Docker', 'Istio',
-  'TypeScript', 'Next.js', 'React', 'Node.js', 'PostgreSQL',
-  'FastAPI', 'Kafka', 'Redis', 'gRPC', 'GraphQL'
-];
-
-export default function ApplyPage() {
+function ApplyFormContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const roleParam = searchParams.get('role');
+
   const [currentStep, setCurrentStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submissionSuccess, setSubmissionSuccess] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+
+  // Dynamic Roles & Technologies State
+  const [availableRoles, setAvailableRoles] = useState<Role[]>([]);
+  const [roleTopTechs, setRoleTopTechs] = useState<Technology[]>([]);
   const [selectedTechs, setSelectedTechs] = useState<string[]>(['Python', 'TypeScript', 'Docker']);
-  const [customTechInput, setCustomTechInput] = useState('');
+  const [customTechTags, setCustomTechTags] = useState<string[]>([]);
   const [uploadedFileName, setUploadedFileName] = useState<string | null>(null);
 
   const {
     register,
     handleSubmit,
+    control,
     trigger,
     watch,
     setValue,
@@ -74,7 +79,7 @@ export default function ApplyPage() {
       portfolio_url: '',
       resume_url: '',
       resume_filename: '',
-      primary_role: 'ai_engineer',
+      primary_role: roleParam || 'ai-llm-engineer',
       contractual_agreement_accepted: false,
       work_modes: ['remote'],
       home_timezone: 'UTC-05:00 (EST - US Eastern / New York)',
@@ -92,24 +97,57 @@ export default function ApplyPage() {
 
   const formValues = watch();
 
-  // Resume File Upload handler (creates local base64/data URI and sets filename)
+  // Load dynamic roles on mount and handle ?role= query param
+  useEffect(() => {
+    async function loadRoles() {
+      try {
+        const roles = await getRolesList(true);
+        setAvailableRoles(roles);
+
+        if (roleParam) {
+          const matched = roles.find(r => r.slug === roleParam || r.id === roleParam);
+          if (matched) {
+            setValue('primary_role', matched.slug, { shouldValidate: true });
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load roles for apply form', err);
+      }
+    }
+    loadRoles();
+  }, [roleParam, setValue]);
+
+  // Load Top 15 approved technologies associated with selected role
+  useEffect(() => {
+    async function loadRoleTechs() {
+      if (!formValues.primary_role) return;
+      try {
+        const topTechs = await getTopTechnologiesForRole(formValues.primary_role, 15);
+        setRoleTopTechs(topTechs);
+      } catch (err) {
+        console.error('Failed to load technologies for role', err);
+      }
+    }
+    loadRoleTechs();
+  }, [formValues.primary_role]);
+
+  // Resume File Upload handler
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     if (file.size > 10 * 1024 * 1024) {
-      alert('File size exceeds 10MB limit. Please upload a smaller PDF or Word document.');
+      alert('File size exceeds 10MB limit. Please upload a smaller PDF or DOCX file.');
       return;
     }
 
     setUploadedFileName(file.name);
-    setValue('resume_filename', file.name);
+    setValue('resume_filename', file.name, { shouldValidate: true });
 
-    // Read as Data URL so it can be previewed or persisted
     const reader = new FileReader();
-    reader.onload = (uploadEvent) => {
-      const result = uploadEvent.target?.result as string;
-      setValue('resume_url', result, { shouldValidate: true });
+    reader.onload = (event) => {
+      const base64Data = event.target?.result as string;
+      setValue('resume_url', base64Data, { shouldValidate: true });
     };
     reader.readAsDataURL(file);
   };
@@ -117,23 +155,23 @@ export default function ApplyPage() {
   const removeUploadedFile = () => {
     setUploadedFileName(null);
     setValue('resume_url', '', { shouldValidate: true });
-    setValue('resume_filename', '');
+    setValue('resume_filename', '', { shouldValidate: true });
   };
 
-  // Step validation triggers
+  // Step validation
   const handleNextStep = async () => {
-    let fieldsToValidate: (keyof CandidateApplicationFormValues)[] = [];
+    let isValid = false;
+
     if (currentStep === 1) {
-      fieldsToValidate = ['full_name', 'email', 'phone_number', 'linkedin_url', 'github_url', 'portfolio_url', 'resume_url'];
+      isValid = await trigger(['full_name', 'email', 'phone_number', 'resume_url']);
     } else if (currentStep === 2) {
-      fieldsToValidate = ['primary_role', 'contractual_agreement_accepted', 'work_modes'];
+      isValid = await trigger(['primary_role', 'work_modes', 'contractual_agreement_accepted']);
     } else if (currentStep === 3) {
-      fieldsToValidate = ['home_timezone', 'target_timezones', 'overlap_hours_per_day', 'availability_status', 'available_from'];
+      isValid = await trigger(['home_timezone', 'target_timezones', 'overlap_hours_per_day', 'availability_status', 'available_from']);
     } else if (currentStep === 4) {
-      fieldsToValidate = ['english_proficiency', 'written_pitch', 'video_pitch_url'];
+      isValid = await trigger(['english_proficiency', 'written_pitch', 'video_pitch_url']);
     }
 
-    const isValid = await trigger(fieldsToValidate);
     if (isValid) {
       setCurrentStep((prev) => Math.min(prev + 1, 5));
       window.scrollTo({ top: 120, behavior: 'smooth' });
@@ -156,15 +194,27 @@ export default function ApplyPage() {
     setValue('tech_stack', updated, { shouldValidate: true });
   };
 
-  const addCustomTech = () => {
-    if (!customTechInput.trim()) return;
-    const clean = customTechInput.trim();
-    if (!selectedTechs.includes(clean)) {
+  // Add technology from autocomplete (either approved existing or new custom)
+  const handleAddTechFromAutocomplete = (techName: string, isCustom = false) => {
+    const clean = techName.trim();
+    if (!clean) return;
+
+    if (!selectedTechs.some(t => t.toLowerCase() === clean.toLowerCase())) {
       const updated = [...selectedTechs, clean];
       setSelectedTechs(updated);
       setValue('tech_stack', updated, { shouldValidate: true });
+
+      if (isCustom && !customTechTags.includes(clean)) {
+        setCustomTechTags(prev => [...prev, clean]);
+      }
     }
-    setCustomTechInput('');
+  };
+
+  const handleRemoveTech = (tech: string) => {
+    const updated = selectedTechs.filter(t => t !== tech);
+    setSelectedTechs(updated);
+    setValue('tech_stack', updated, { shouldValidate: true });
+    setCustomTechTags(prev => prev.filter(t => t !== tech));
   };
 
   const onSubmit = async (data: CandidateApplicationFormValues) => {
@@ -172,6 +222,25 @@ export default function ApplyPage() {
     setSubmitError(null);
 
     try {
+      // 1. Submit any custom technologies into the moderation queue
+      if (customTechTags.length > 0) {
+        for (const customTech of customTechTags) {
+          try {
+            await fetch('/api/technologies', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                name: customTech,
+                roleSlugOrId: data.primary_role,
+              }),
+            });
+          } catch (e) {
+            console.error('Failed to queue custom technology', e);
+          }
+        }
+      }
+
+      // 2. Submit candidate application record
       const res = await createCandidateRecord(data);
       if (res.success) {
         setSubmissionSuccess(true);
@@ -219,79 +288,65 @@ export default function ApplyPage() {
               </p>
             </div>
 
-            <div className="p-4 border-2 border-[#111113] bg-[#F8F7F4] max-w-sm mx-auto text-left font-mono text-xs space-y-2">
-              <div>
-                <span className="text-[#111113]/60 block uppercase text-[10px] font-bold">Candidate:</span>
-                <p className="font-bold text-[#111113]">{formValues.full_name}</p>
+            <div className="p-5 bg-[#F8F7F4] border-2 border-[#111113] max-w-md mx-auto font-mono text-xs text-left space-y-2">
+              <div className="font-bold text-[#FF4D00] uppercase tracking-wider">
+                [SUBMISSION SUMMARY]
               </div>
-              <div>
-                <span className="text-[#111113]/60 block uppercase text-[10px] font-bold">Email:</span>
-                <p className="text-[#FF4D00] font-bold">{formValues.email}</p>
+              <div className="space-y-1 text-[#111113]/80">
+                <div>Candidate: <strong>{formValues.full_name}</strong></div>
+                <div>Primary Track: <strong>{formValues.primary_role}</strong></div>
+                <div>Overlap: <strong>{formValues.overlap_hours_per_day} hrs/day</strong> ({formValues.target_timezones?.join(', ')})</div>
+                <div>Core Stack: <strong>{selectedTechs.join(', ')}</strong></div>
+                {customTechTags.length > 0 && (
+                  <div className="text-[#FF4D00] text-[11px] pt-1">
+                    * Custom skills ({customTechTags.join(', ')}) queued for moderation review.
+                  </div>
+                )}
               </div>
-              <div>
-                <span className="text-[#111113]/60 block uppercase text-[10px] font-bold">Phone:</span>
-                <p className="text-[#111113]">{formValues.phone_number}</p>
-              </div>
-              {formValues.resume_filename && (
-                <div>
-                  <span className="text-[#111113]/60 block uppercase text-[10px] font-bold">Attached CV:</span>
-                  <p className="text-[#111113] font-bold">{formValues.resume_filename}</p>
-                </div>
-              )}
             </div>
 
-            <div className="pt-4 flex flex-col sm:flex-row items-center justify-center gap-3 font-mono text-xs">
-              <Link
-                href="/admin/dashboard"
-                className="btn-brutalist btn-brutalist-primary py-3 px-6"
-              >
-                View Pipeline Dashboard
+            <div className="flex flex-wrap items-center justify-center gap-4 pt-4">
+              <Link href="/" className="btn-brutalist btn-brutalist-primary">
+                Return to Overview
               </Link>
-              <Link
-                href="/candidate/update"
-                className="btn-brutalist py-3 px-6"
-              >
-                Availability Portal
+              <Link href="/candidate/update" className="btn-brutalist">
+                Candidate Availability Portal
               </Link>
             </div>
           </div>
         ) : (
-          /* Multi-Step Application Form Card */
-          <div className="bg-white border-2 border-[#111113] shadow-[6px_6px_0px_0px_#111113] overflow-hidden">
-            {/* Form Header with Progress Stepper */}
-            <div className="p-6 sm:p-8 border-b-2 border-[#111113] bg-[#F8F7F4]">
-              <div className="font-mono text-xs uppercase tracking-widest text-[#FF4D00] font-bold mb-1">
-                [TALENT ONBOARDING PROTOCOL]
+          /* Multi-Step Wizard Container */
+          <div className="bg-white border-2 border-[#111113] shadow-[8px_8px_0px_0px_#111113] overflow-hidden">
+            {/* Step Indicator Header */}
+            <div className="bg-[#111113] text-[#F8F7F4] p-4 sm:p-5 flex flex-wrap items-center justify-between gap-4 border-b-2 border-[#111113]">
+              <div>
+                <span className="font-mono text-xs uppercase tracking-widest text-[#FF4D00] font-bold block mb-1">
+                  [CANDIDATE ONBOARDING]
+                </span>
+                <span className="font-syne font-bold text-lg sm:text-xl">
+                  Step {currentStep} of 5: {
+                    currentStep === 1 ? 'Identity & Resume' :
+                    currentStep === 2 ? 'Specialization Track' :
+                    currentStep === 3 ? 'Timezone & Overlap' :
+                    currentStep === 4 ? 'Communication & Pitch' : 'Core Technologies'
+                  }
+                </span>
               </div>
-              <h1 className="font-syne font-extrabold text-2xl sm:text-3xl text-[#111113]">
-                Candidate Application
-              </h1>
-              <p className="font-mono text-xs text-[#111113]/70 uppercase tracking-wider mt-1">
-                Phase {currentStep} of 5 — Complete your technical dossier for direct client matching.
-              </p>
 
-              {/* Step Pills */}
-              <div className="grid grid-cols-5 gap-2 mt-6 font-mono text-[10px] uppercase">
-                {[
-                  { step: 1, label: 'Identity & CV' },
-                  { step: 2, label: 'Role & Terms' },
-                  { step: 3, label: 'Timezone' },
-                  { step: 4, label: 'Pitch & Video' },
-                  { step: 5, label: 'Tech Stack' },
-                ].map((s) => (
-                  <div key={s.step} className="flex flex-col gap-1">
-                    <div 
-                      className={`h-1.5 transition-all duration-200 ${
-                        s.step < currentStep 
-                          ? 'bg-[#111113]' 
-                          : s.step === currentStep 
-                          ? 'bg-[#FF4D00]' 
-                          : 'bg-[#111113]/20'
-                      }`}
-                    />
-                    <span className={`hidden sm:inline font-bold truncate ${s.step === currentStep ? 'text-[#FF4D00]' : 'text-[#111113]/70'}`}>
-                      {s.step}. {s.label}
-                    </span>
+              {/* Progress Steps Indicators */}
+              <div className="flex items-center gap-1.5 font-mono text-xs">
+                {[1, 2, 3, 4, 5].map((step) => (
+                  <div
+                    key={step}
+                    className={`w-7 h-7 border-2 flex items-center justify-center font-bold ${
+                      currentStep === step
+                        ? 'bg-[#FF4D00] border-[#FF4D00] text-white'
+                        : currentStep > step
+                        ? 'bg-white border-white text-[#111113]'
+                        : 'border-[#F8F7F4]/30 text-[#F8F7F4]/40'
+                    }`}
+                  >
+                    {step}
                   </div>
                 ))}
               </div>
@@ -299,7 +354,7 @@ export default function ApplyPage() {
 
             {/* Error Message Box */}
             {submitError && (
-              <div className="mx-6 sm:mx-8 mt-6 p-4 rounded-2xl bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-900 text-rose-800 dark:text-rose-200 text-xs flex items-center gap-3">
+              <div className="mx-6 sm:mx-8 mt-6 p-4 bg-rose-50 border-2 border-rose-300 text-rose-800 text-xs font-mono flex items-center gap-3">
                 <AlertCircle className="w-5 h-5 text-rose-600 shrink-0" />
                 <span>{submitError}</span>
               </div>
@@ -353,22 +408,24 @@ export default function ApplyPage() {
                     </div>
 
                     <div>
-                      <label className="block font-mono text-xs uppercase font-bold text-[#111113] mb-1 flex items-center justify-between">
-                        <span>Phone Number (with Country Code) <span className="text-[#FF4D00]">*</span></span>
-                        <span className="text-[10px] text-[#111113]/60 uppercase">Mandatory</span>
-                      </label>
-                      <div className="relative">
-                        <Phone className="w-4 h-4 absolute left-3.5 top-3 text-[#111113]/50" />
-                        <input
-                          type="tel"
-                          {...register('phone_number')}
-                          placeholder="+1 555 123 4567 or +44 20 7946 0912"
-                          className="w-full font-mono text-xs pl-10 pr-3.5 py-2.5 border-2 border-[#111113] bg-[#F8F7F4] text-[#111113] placeholder:text-[#111113]/40 focus:outline-hidden focus:border-[#FF4D00]"
-                        />
-                      </div>
-                      {errors.phone_number && (
-                        <p className="font-mono text-xs text-[#FF4D00] mt-1">{errors.phone_number.message}</p>
-                      )}
+                      <Controller
+                        name="phone_number"
+                        control={control}
+                        render={({ field, fieldState }) => (
+                          <PhoneInputWithCountry
+                            value={field.value}
+                            onChange={(formatted) => {
+                              field.onChange(formatted);
+                            }}
+                            onBlur={field.onBlur}
+                            label="Phone Number (with Country Code & Flag)"
+                            required
+                            defaultCountry="US"
+                            error={fieldState.error?.message}
+                            placeholder="e.g. (555) 123-4567"
+                          />
+                        )}
+                      />
                     </div>
                   </div>
 
@@ -477,45 +534,85 @@ export default function ApplyPage() {
                   <div className="border-b-2 border-[#111113]/10 pb-3">
                     <h2 className="font-syne font-bold text-base text-[#111113] flex items-center gap-2">
                       <Briefcase className="w-4 h-4 text-[#FF4D00]" />
-                      Primary Track &amp; Contractual Terms
+                      Primary Engineering Specialization Track
                     </h2>
                     <p className="font-mono text-xs text-[#111113]/70 uppercase tracking-wider mt-0.5">
-                      Select your specialty: AI, FDE, Mobile App Developer, Solutions Architect, or Full-Stack.
+                      Select your specialization track. Both Active and Future Tracks are open for registration.
                     </p>
                   </div>
 
-                  {/* Primary Role Selector Cards */}
+                  {/* Dynamic Roles Cards */}
                   <div>
                     <label className="block font-mono text-xs uppercase font-bold text-[#111113] mb-2">
-                      Primary Engineering Specialization <span className="text-[#FF4D00]">*</span>
+                      Select Your Specialty <span className="text-[#FF4D00]">*</span>
                     </label>
+
                     <div className="grid sm:grid-cols-2 gap-3">
-                      {(['ai_engineer', 'forward_deployed_engineer', 'mobile_app_developer', 'solutions_architect', 'full_stack'] as PrimaryRole[]).map((role) => {
-                        const meta = ROLE_LABELS[role];
-                        const isSelected = formValues.primary_role === role;
+                      {availableRoles.map((role) => {
+                        const isSelected = formValues.primary_role === role.slug || formValues.primary_role === role.id;
+                        const isClosed = role.status === 'closed';
+
                         return (
                           <div
-                            key={role}
-                            onClick={() => setValue('primary_role', role, { shouldValidate: true })}
-                            className={`p-4 border-2 border-[#111113] cursor-pointer transition-all ${
+                            key={role.id}
+                            onClick={() => setValue('primary_role', role.slug, { shouldValidate: true })}
+                            className={`p-4 border-2 border-[#111113] cursor-pointer transition-all relative flex flex-col justify-between ${
                               isSelected
                                 ? 'bg-[#111113] text-[#F8F7F4] shadow-[4px_4px_0px_0px_#FF4D00]'
                                 : 'bg-white text-[#111113] hover:bg-[#F8F7F4]'
                             }`}
                           >
-                            <div className="flex items-center justify-between">
-                              <span className="font-syne font-bold text-sm">
-                                {meta.label}
-                              </span>
-                              {isSelected && <CheckCircle2 className="w-4 h-4 text-[#FF4D00]" />}
+                            <div>
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="font-syne font-bold text-sm">
+                                    {role.title}
+                                  </span>
+                                  {isClosed && (
+                                    <span className="bg-amber-100 text-amber-900 border border-amber-300 text-[9px] font-mono uppercase px-1.5 py-0.2 font-bold">
+                                      Future Track
+                                    </span>
+                                  )}
+                                </div>
+
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                  {/* Info icon opening standalone role page in new tab */}
+                                  <Link
+                                    href={`/roles/${role.slug}?from=apply`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    onClick={(e) => e.stopPropagation()}
+                                    className={`p-1 rounded-sm border transition-colors ${
+                                      isSelected
+                                        ? 'border-white/30 text-white/80 hover:text-white hover:border-white'
+                                        : 'border-[#111113]/30 text-[#111113]/70 hover:text-[#FF4D00] hover:border-[#FF4D00]'
+                                    }`}
+                                    title="Open role specification in new tab"
+                                  >
+                                    <Info className="w-3.5 h-3.5" />
+                                  </Link>
+
+                                  {isSelected && <CheckCircle2 className="w-4 h-4 text-[#FF4D00]" />}
+                                </div>
+                              </div>
+
+                              <p className={`font-mono text-xs mt-2 ${isSelected ? 'text-[#F8F7F4]/70' : 'text-[#111113]/60'}`}>
+                                {role.short_description}
+                              </p>
+
+                              {isClosed && (
+                                <p className={`font-mono text-[10px] mt-2 italic ${isSelected ? 'text-amber-200' : 'text-amber-800'}`}>
+                                  * Upcoming talent pool — Applications prioritized for upcoming enterprise mandates.
+                                </p>
+                              )}
                             </div>
-                            <p className={`font-mono text-xs mt-1.5 ${isSelected ? 'text-[#F8F7F4]/70' : 'text-[#111113]/60'}`}>
-                              {meta.desc}
-                            </p>
                           </div>
                         );
                       })}
                     </div>
+                    {errors.primary_role && (
+                      <p className="font-mono text-xs text-[#FF4D00] mt-1">{errors.primary_role.message}</p>
+                    )}
                   </div>
 
                   {/* Work Modes */}
@@ -608,32 +705,29 @@ export default function ApplyPage() {
                           </option>
                         ))}
                       </select>
-                      {errors.home_timezone && (
-                        <p className="font-mono text-xs text-[#FF4D00] mt-1">{errors.home_timezone.message}</p>
-                      )}
                     </div>
 
+                    {/* Overlap Hours */}
                     <div>
                       <label className="block font-mono text-xs uppercase font-bold text-[#111113] mb-1">
-                        Daily Client Overlap Hours (min 2) <span className="text-[#FF4D00]">*</span>
+                        Daily Client Overlap Hours (Min 4 recommended) <span className="text-[#FF4D00]">*</span>
                       </label>
                       <input
                         type="number"
-                        min="2"
-                        max="12"
+                        min={2}
+                        max={12}
                         {...register('overlap_hours_per_day')}
                         className="w-full font-mono text-xs px-3.5 py-2.5 border-2 border-[#111113] bg-[#F8F7F4] text-[#111113] focus:outline-hidden focus:border-[#FF4D00]"
                       />
-                      <span className="font-mono text-[10px] text-[#111113]/60 uppercase mt-1 block">Hours per day available during target client working windows.</span>
                     </div>
                   </div>
 
                   {/* Target Client Regions */}
                   <div>
                     <label className="block font-mono text-xs uppercase font-bold text-[#111113] mb-2">
-                      Target Client Regions Willing to Overlap With <span className="text-[#FF4D00]">*</span>
+                      Target Client Regions (Select all you can overlap with) <span className="text-[#FF4D00]">*</span>
                     </label>
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <div className="flex flex-wrap gap-2.5">
                       {(['USA', 'Europe', 'Asia', 'APAC'] as TargetRegion[]).map((region) => {
                         const isChecked = formValues.target_timezones?.includes(region);
                         return (
@@ -647,36 +741,32 @@ export default function ApplyPage() {
                                 : [...current, region];
                               setValue('target_timezones', updated as any, { shouldValidate: true });
                             }}
-                            className={`p-3 border-2 border-[#111113] font-mono text-xs uppercase font-bold transition flex items-center justify-between ${
+                            className={`px-4 py-2 border-2 border-[#111113] font-mono text-xs uppercase font-bold transition ${
                               isChecked
                                 ? 'bg-[#111113] text-[#F8F7F4] shadow-[3px_3px_0px_0px_#FF4D00]'
-                                : 'bg-[#F8F7F4] text-[#111113] hover:bg-white'
+                                : 'bg-white text-[#111113] hover:bg-[#F8F7F4]'
                             }`}
                           >
-                            <span>{region}</span>
-                            {isChecked && <Check className="w-3.5 h-3.5 text-[#FF4D00]" />}
+                            {region}
                           </button>
                         );
                       })}
                     </div>
-                    {errors.target_timezones && (
-                      <p className="font-mono text-xs text-[#FF4D00] mt-1">{errors.target_timezones.message}</p>
-                    )}
                   </div>
 
                   <div className="grid sm:grid-cols-2 gap-4">
                     <div>
                       <label className="block font-mono text-xs uppercase font-bold text-[#111113] mb-1">
-                        Current Availability Status <span className="text-[#FF4D00]">*</span>
+                        Availability Status <span className="text-[#FF4D00]">*</span>
                       </label>
                       <select
                         {...register('availability_status')}
                         className="w-full font-mono text-xs px-3 py-2.5 border-2 border-[#111113] bg-[#F8F7F4] text-[#111113] focus:outline-hidden focus:border-[#FF4D00]"
                       >
-                        <option value="available_now">Available Now (Immediate)</option>
-                        <option value="available_soon">Available Soon (1-2 weeks)</option>
-                        <option value="part_time_only">Part-Time Only (15-20h/w)</option>
-                        <option value="busy">Committed / Busy for now</option>
+                        <option value="available_now">Available Now (Immediate Deploy)</option>
+                        <option value="available_soon">Available Soon (1-2 Weeks)</option>
+                        <option value="part_time_only">Part-Time Only (15-20 hrs/week)</option>
+                        <option value="busy">Committed / Future Notice</option>
                       </select>
                     </div>
 
@@ -687,14 +777,14 @@ export default function ApplyPage() {
                       <input
                         type="date"
                         {...register('available_from')}
-                        className="w-full font-mono text-xs px-3 py-2.5 border-2 border-[#111113] bg-[#F8F7F4] text-[#111113] focus:outline-hidden focus:border-[#FF4D00]"
+                        className="w-full font-mono text-xs px-3.5 py-2.5 border-2 border-[#111113] bg-[#F8F7F4] text-[#111113] focus:outline-hidden focus:border-[#FF4D00]"
                       />
                     </div>
                   </div>
                 </div>
               )}
 
-              {/* ================= STEP 4: English & Video Pitch ================= */}
+              {/* ================= STEP 4: Pitch & Video ================= */}
               {currentStep === 4 && (
                 <div className="space-y-6 animate-in fade-in duration-200">
                   <div className="border-b-2 border-[#111113]/10 pb-3">
@@ -750,9 +840,6 @@ export default function ApplyPage() {
                     {errors.video_pitch_url && (
                       <p className="font-mono text-xs text-[#FF4D00] mt-1">{errors.video_pitch_url.message}</p>
                     )}
-                    <p className="font-mono text-[10px] text-[#111113]/60 uppercase mt-1">
-                      2-3 minute video introducing yourself, walking through a past architecture diagram or code repository, and explaining your overlap availability.
-                    </p>
                   </div>
                 </div>
               )}
@@ -766,30 +853,34 @@ export default function ApplyPage() {
                       Core Tech Stack &amp; Review
                     </h2>
                     <p className="font-mono text-xs text-[#111113]/70 uppercase tracking-wider mt-0.5">
-                      Pick technologies you can deploy immediately on client contracts.
+                      Top 15 vetted technologies for your selected specialization track.
                     </p>
                   </div>
 
-                  {/* Common tags */}
+                  {/* Top 15 Technologies specific to selected role */}
                   <div>
-                    <label className="block font-mono text-xs uppercase font-bold text-[#111113] mb-2">
-                      Select Primary Technologies (Select at least 2) <span className="text-[#FF4D00]">*</span>
+                    <label className="block font-mono text-xs uppercase font-bold text-[#111113] mb-2 flex items-center justify-between">
+                      <span>Associated Track Technologies (Top 15 Approved) <span className="text-[#FF4D00]">*</span></span>
+                      <span className="text-[10px] text-[#111113]/60 uppercase">
+                        Select at least 2
+                      </span>
                     </label>
+
                     <div className="flex flex-wrap gap-2">
-                      {COMMON_TECH_STACK.map((tech) => {
-                        const isSelected = selectedTechs.includes(tech);
+                      {roleTopTechs.map((tech) => {
+                        const isSelected = selectedTechs.includes(tech.name);
                         return (
                           <button
-                            key={tech}
+                            key={tech.id}
                             type="button"
-                            onClick={() => toggleTech(tech)}
+                            onClick={() => toggleTech(tech.name)}
                             className={`px-3 py-1.5 border-2 border-[#111113] font-mono text-xs font-bold transition ${
                               isSelected
                                 ? 'bg-[#111113] text-[#F8F7F4] shadow-[2px_2px_0px_0px_#FF4D00]'
                                 : 'bg-white text-[#111113] hover:bg-[#F8F7F4]'
                             }`}
                           >
-                            {isSelected ? `✓ ${tech}` : `+ ${tech}`}
+                            {isSelected ? `✓ ${tech.name}` : `+ ${tech.name}`}
                           </button>
                         );
                       })}
@@ -799,28 +890,58 @@ export default function ApplyPage() {
                     )}
                   </div>
 
-                  {/* Add custom technology */}
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={customTechInput}
-                      onChange={(e) => setCustomTechInput(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault();
-                          addCustomTech();
-                        }
-                      }}
-                      placeholder="Add custom technology (e.g. Swift, Terraform, Temporal)..."
-                      className="font-mono text-xs px-3.5 py-2 border-2 border-[#111113] bg-[#F8F7F4] text-[#111113] placeholder:text-[#111113]/40 flex-1 focus:outline-hidden focus:border-[#FF4D00]"
+                  {/* Selected Tech Stack Badges */}
+                  {selectedTechs.length > 0 && (
+                    <div className="p-3 bg-[#F8F7F4] border-2 border-[#111113] space-y-2">
+                      <span className="font-mono text-[10px] uppercase font-bold text-[#111113]/70 block">
+                        Selected Stack ({selectedTechs.length})
+                      </span>
+                      <div className="flex flex-wrap gap-1.5">
+                        {selectedTechs.map((tech) => {
+                          const isCustom = customTechTags.includes(tech);
+                          return (
+                            <span
+                              key={tech}
+                              className={`font-mono text-xs px-2.5 py-1 border flex items-center gap-1.5 ${
+                                isCustom
+                                  ? 'bg-amber-50 text-amber-900 border-amber-300'
+                                  : 'bg-white text-[#111113] border-[#111113]'
+                              }`}
+                            >
+                              <span>{tech}</span>
+                              {isCustom && (
+                                <span className="text-[9px] uppercase px-1 bg-amber-200 text-amber-900 font-bold">
+                                  Custom
+                                </span>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveTech(tech)}
+                                className="hover:text-rose-600 font-bold ml-1"
+                              >
+                                ×
+                              </button>
+                            </span>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Add Additional or Custom Technology via Autocomplete */}
+                  <div className="space-y-1">
+                    <label className="block font-mono text-xs uppercase font-bold text-[#111113]">
+                      Search Or Add Custom Technology (Type 2+ Characters)
+                    </label>
+                    <p className="font-mono text-[10px] text-[#111113]/60 uppercase">
+                      Select matching system skills or add custom tools. Custom technologies are auto-sent to moderation review.
+                    </p>
+                    <TechAutocomplete
+                      roleSlugOrId={formValues.primary_role}
+                      selectedTechs={selectedTechs}
+                      availableRoleTechs={roleTopTechs}
+                      onSelectTech={handleAddTechFromAutocomplete}
                     />
-                    <button
-                      type="button"
-                      onClick={addCustomTech}
-                      className="btn-brutalist text-xs py-2 px-4 uppercase font-bold"
-                    >
-                      Add Tag
-                    </button>
                   </div>
 
                   {/* Quick Summary Review Box */}
@@ -832,7 +953,7 @@ export default function ApplyPage() {
                       <div><strong className="text-[#111113]">Name:</strong> {formValues.full_name}</div>
                       <div><strong className="text-[#111113]">Email:</strong> {formValues.email}</div>
                       <div><strong className="text-[#111113]">Phone:</strong> {formValues.phone_number}</div>
-                      <div><strong className="text-[#111113]">Role:</strong> {ROLE_LABELS[formValues.primary_role]?.label}</div>
+                      <div><strong className="text-[#111113]">Role:</strong> {formValues.primary_role}</div>
                       <div><strong className="text-[#111113]">Resume:</strong> {formValues.resume_filename || 'Attached'}</div>
                       <div><strong className="text-[#111113]">Timezone:</strong> {formValues.home_timezone.split(' — ')[0]}</div>
                       <div><strong className="text-[#111113]">Overlap:</strong> {formValues.overlap_hours_per_day} hrs/day ({formValues.target_timezones?.join(', ')})</div>
@@ -858,7 +979,7 @@ export default function ApplyPage() {
                     href="/"
                     className="font-mono text-xs uppercase text-[#111113]/70 hover:text-[#FF4D00] transition-colors"
                   >
-                    ← Overview
+                    ← Cancel Application
                   </Link>
                 )}
 
@@ -866,19 +987,18 @@ export default function ApplyPage() {
                   <button
                     type="button"
                     onClick={handleNextStep}
-                    className="btn-brutalist btn-brutalist-primary text-xs py-2.5 px-6"
+                    className="btn-brutalist btn-brutalist-primary text-xs py-2.5 px-6 ml-auto"
                   >
-                    <span>Continue</span>
+                    <span>Proceed to Step {currentStep + 1}</span>
                     <ArrowRight className="w-4 h-4" />
                   </button>
                 ) : (
                   <button
                     type="submit"
                     disabled={isSubmitting}
-                    className="btn-brutalist btn-brutalist-primary text-xs py-3 px-8 disabled:opacity-50"
+                    className="btn-brutalist btn-brutalist-primary text-xs py-3 px-8 ml-auto font-bold tracking-wider"
                   >
-                    <Sparkles className="w-4 h-4 text-[#FF4D00]" />
-                    <span>{isSubmitting ? 'SUBMITTING DOSSIER...' : 'SUBMIT CANDIDATE DOSSIER & CV'}</span>
+                    {isSubmitting ? 'Ingesting Dossier...' : 'Submit Final Application →'}
                   </button>
                 )}
               </div>
@@ -887,5 +1007,17 @@ export default function ApplyPage() {
         )}
       </main>
     </div>
+  );
+}
+
+export default function ApplyPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-[#F8F7F4] flex items-center justify-center font-mono text-xs">
+        Loading Application Wizard...
+      </div>
+    }>
+      <ApplyFormContent />
+    </Suspense>
   );
 }

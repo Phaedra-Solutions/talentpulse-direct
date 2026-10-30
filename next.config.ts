@@ -8,6 +8,11 @@ const nextConfig: NextConfig = {
   typescript: {
     ignoreBuildErrors: false,
   },
+  // Suppress dev server cross-origin warning for Google Cloud Run / AI Studio preview iframe proxy
+  allowedDevOrigins: [
+    '*.run.app',
+    'localhost:3000',
+  ],
   // Allow access to remote image placeholder.
   images: {
     remotePatterns: [

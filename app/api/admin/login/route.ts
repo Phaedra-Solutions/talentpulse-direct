@@ -105,17 +105,37 @@ export async function POST(req: NextRequest) {
     }
 
     // 2. Offline / unseeded fallback only when database is unavailable and for initial setup
-    if (!verified && normalizedEmail === DESIGNATED_ADMIN_EMAIL.toLowerCase()) {
+    if (!verified) {
       const isMasterValid = verifyAdminPassword(password, DEFAULT_ADMIN_SALT, DEFAULT_ADMIN_HASH);
       if (isMasterValid) {
-        verified = true;
-        mustChangePassword = true;
-        adminProfile = {
-          id: 'admin-master',
-          email: DESIGNATED_ADMIN_EMAIL,
-          name: 'TalentPulse Super Admin',
-          role: 'super_admin',
-        };
+        if (normalizedEmail === DESIGNATED_ADMIN_EMAIL.toLowerCase()) {
+          verified = true;
+          mustChangePassword = false;
+          adminProfile = {
+            id: 'admin-master',
+            email: DESIGNATED_ADMIN_EMAIL,
+            name: 'TalentPulse Super Admin',
+            role: 'super_admin',
+          };
+        } else if (normalizedEmail === 'sales@talentpulse.com') {
+          verified = true;
+          mustChangePassword = false;
+          adminProfile = {
+            id: 'sales-lead-01',
+            email: 'sales@talentpulse.com',
+            name: 'Marcus Vance (Sales Executive)',
+            role: 'sales_executive',
+          };
+        } else if (normalizedEmail === 'hr@talentpulse.com') {
+          verified = true;
+          mustChangePassword = false;
+          adminProfile = {
+            id: 'hr-lead-01',
+            email: 'hr@talentpulse.com',
+            name: 'Sofia Chen (HR Executive)',
+            role: 'hr_executive',
+          };
+        }
       }
     }
 

@@ -27,12 +27,10 @@ function toDbCandidateData(candidate: any) {
   const data = { ...candidate };
   const role = data.primary_role;
 
-  if (role === 'solutions_architect') {
+  const standardDbRoles = ['ai_engineer', 'forward_deployed_engineer', 'full_stack'];
+  if (!standardDbRoles.includes(role)) {
     data.primary_role = 'full_stack';
-    data.internal_notes = `[Role: solutions_architect] ${data.internal_notes || ''}`.trim();
-  } else if (role === 'mobile_app_developer') {
-    data.primary_role = 'software_engineer';
-    data.internal_notes = `[Role: mobile_app_developer] ${data.internal_notes || ''}`.trim();
+    data.internal_notes = `[Role: ${role}] ${data.internal_notes || ''}`.trim();
   }
 
   return data;
@@ -43,10 +41,9 @@ function fromDbCandidate(c: any): Candidate {
   let role = c.primary_role;
   let notes = c.internal_notes || '';
 
-  if (notes.includes('[Role: solutions_architect]')) {
-    role = 'solutions_architect';
-  } else if (notes.includes('[Role: mobile_app_developer]')) {
-    role = 'mobile_app_developer';
+  const roleMatch = notes.match(/\[Role:\s*([\w-]+)\]/);
+  if (roleMatch && roleMatch[1]) {
+    role = roleMatch[1];
   } else if (role === 'software_engineer') {
     role = 'full_stack';
   }

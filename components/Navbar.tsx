@@ -13,6 +13,7 @@ export function Navbar() {
 
   const navLinks = [
     { href: '/', label: 'Overview' },
+    { href: '/hire', label: 'Hire Talent' },
     { href: '/candidate/update', label: 'Candidate Portal' },
   ];
 
@@ -77,10 +78,16 @@ export function Navbar() {
           </nav>
 
           {/* Right Action */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2.5">
+            <Link
+              href="/hire"
+              className="btn-brutalist text-xs py-2 px-3 sm:px-4 hidden sm:inline-flex"
+            >
+              Hire Talent
+            </Link>
             <Link
               href="/apply"
-              className="btn-brutalist btn-brutalist-primary text-xs py-2 px-4 sm:px-5"
+              className="btn-brutalist btn-brutalist-primary text-xs py-2 px-3 sm:px-4"
             >
               Join Talent Pool
             </Link>

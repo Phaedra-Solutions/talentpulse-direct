@@ -24,9 +24,9 @@
     "open-source"
   ],
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
+    "dev": "PORT=3000 next dev -p 3000",
+    "build": "NODE_ENV=production next build",
+    "start": "PORT=3000 next start -p 3000",
     "lint": "eslint .",
     "clean": "next clean"
   },
@@ -37,6 +37,7 @@
     "autoprefixer": "^10.4.21",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "libphonenumber-js": "^1.13.15",
     "lucide-react": "^0.553.0",
     "motion": "^14.6.0",
     "next": "^15.4.9",
@@ -45,6 +46,7 @@
     "react-dom": "^19.2.1",
     "react-hook-form": "^7.91.0",
     "tailwind-merge": "^3.3.1",
+    "xlsx": "^0.18.5",
     "zod": "^4.6.7"
   },
   "devDependencies": {

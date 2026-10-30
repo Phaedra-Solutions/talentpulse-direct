@@ -270,3 +270,140 @@ ON CONFLICT (email) DO UPDATE SET
     is_active = true,
     updated_at = timezone('utc'::text, now());
 
+-- ==============================================================================
+-- 8. HIRE REQUESTS TABLE (Client Inquiries & Offline Outreach Tracking)
+-- ==============================================================================
+CREATE TABLE IF NOT EXISTS public.hire_requests (
+    id TEXT PRIMARY KEY,
+    role_id TEXT NOT NULL,
+    role_title TEXT NOT NULL,
+    expected_cost TEXT NOT NULL,
+    timeline_to_start TEXT NOT NULL,
+    client_name TEXT NOT NULL,
+    client_email TEXT NOT NULL,
+    client_phone TEXT NOT NULL DEFAULT '',
+    country TEXT NOT NULL DEFAULT '',
+    business_name TEXT NOT NULL,
+    project_scope TEXT DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'new',
+    offline_notes TEXT DEFAULT '',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
+);
+
+CREATE INDEX IF NOT EXISTS idx_hire_requests_status ON public.hire_requests(status);
+CREATE INDEX IF NOT EXISTS idx_hire_requests_created_at ON public.hire_requests(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_hire_requests_client_email ON public.hire_requests(client_email);
+CREATE INDEX IF NOT EXISTS idx_hire_requests_business_name ON public.hire_requests(business_name);
+
+CREATE OR REPLACE FUNCTION public.handle_hire_requests_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = timezone('utc'::text, now());
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+DROP TRIGGER IF EXISTS trigger_set_hire_requests_updated_at ON public.hire_requests;
+CREATE TRIGGER trigger_set_hire_requests_updated_at
+BEFORE UPDATE ON public.hire_requests
+FOR EACH ROW
+EXECUTE FUNCTION public.handle_hire_requests_updated_at();
+
+ALTER TABLE public.hire_requests ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Anyone can submit hire requests" ON public.hire_requests;
+CREATE POLICY "Anyone can submit hire requests"
+ON public.hire_requests
+FOR INSERT
+TO anon, authenticated
+WITH CHECK (
+    client_name IS NOT NULL AND client_name <> ''
+    AND client_email IS NOT NULL AND client_email <> ''
+    AND business_name IS NOT NULL AND business_name <> ''
+);
+
+DROP POLICY IF EXISTS "Admins and Sales can view hire requests" ON public.hire_requests;
+CREATE POLICY "Admins and Sales can view hire requests"
+ON public.hire_requests
+FOR SELECT
+TO authenticated, service_role
+USING (true);
+
+DROP POLICY IF EXISTS "Admins and Sales can update hire requests" ON public.hire_requests;
+CREATE POLICY "Admins and Sales can update hire requests"
+ON public.hire_requests
+FOR UPDATE
+TO authenticated, service_role
+USING (true)
+WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Admins can delete hire requests" ON public.hire_requests;
+CREATE POLICY "Admins can delete hire requests"
+ON public.hire_requests
+FOR DELETE
+TO authenticated, service_role
+USING (true);
+
+-- ==============================================================================
+-- 9. DYNAMIC ROLES & TECHNOLOGIES (Many-to-Many Architecture)
+-- ==============================================================================
+CREATE TABLE IF NOT EXISTS public.roles (
+    id TEXT PRIMARY KEY,
+    slug TEXT NOT NULL UNIQUE,
+    title TEXT NOT NULL,
+    short_description TEXT NOT NULL DEFAULT '',
+    description TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'open',
+    display_order INTEGER NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
+);
+
+CREATE INDEX IF NOT EXISTS idx_roles_slug ON public.roles(slug);
+CREATE INDEX IF NOT EXISTS idx_roles_status ON public.roles(status);
+
+CREATE TABLE IF NOT EXISTS public.technologies (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE,
+    slug TEXT NOT NULL UNIQUE,
+    status TEXT NOT NULL DEFAULT 'approved',
+    is_featured BOOLEAN NOT NULL DEFAULT false,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
+);
+
+CREATE INDEX IF NOT EXISTS idx_technologies_slug ON public.technologies(slug);
+CREATE INDEX IF NOT EXISTS idx_technologies_status ON public.technologies(status);
+
+CREATE TABLE IF NOT EXISTS public.role_technologies (
+    role_id TEXT NOT NULL REFERENCES public.roles(id) ON DELETE CASCADE,
+    technology_id TEXT NOT NULL REFERENCES public.technologies(id) ON DELETE CASCADE,
+    is_featured BOOLEAN NOT NULL DEFAULT false,
+    PRIMARY KEY (role_id, technology_id)
+);
+
+ALTER TABLE public.roles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.technologies ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.role_technologies ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Anyone can view roles" ON public.roles;
+CREATE POLICY "Anyone can view roles" ON public.roles FOR SELECT TO anon, authenticated USING (true);
+
+DROP POLICY IF EXISTS "Anyone can view technologies" ON public.technologies;
+CREATE POLICY "Anyone can view technologies" ON public.technologies FOR SELECT TO anon, authenticated USING (true);
+
+DROP POLICY IF EXISTS "Anyone can view role technologies" ON public.role_technologies;
+CREATE POLICY "Anyone can view role technologies" ON public.role_technologies FOR SELECT TO anon, authenticated USING (true);
+
+DROP POLICY IF EXISTS "Admin modify roles" ON public.roles;
+CREATE POLICY "Admin modify roles" ON public.roles FOR ALL TO authenticated, service_role USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Admin modify technologies" ON public.technologies;
+CREATE POLICY "Admin modify technologies" ON public.technologies FOR ALL TO authenticated, service_role USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Admin modify role technologies" ON public.role_technologies;
+CREATE POLICY "Admin modify role technologies" ON public.role_technologies FOR ALL TO authenticated, service_role USING (true) WITH CHECK (true);
+
+
+

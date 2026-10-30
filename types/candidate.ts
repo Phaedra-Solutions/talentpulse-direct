@@ -5,7 +5,9 @@ export type PrimaryRole =
   | 'forward_deployed_engineer'
   | 'mobile_app_developer'
   | 'solutions_architect'
-  | 'full_stack';
+  | 'full_stack'
+  | 'fractional_cto'
+  | string;
 
 export type AvailabilityStatus = 
   | 'available_now'
@@ -96,9 +98,7 @@ export const candidateApplicationSchema = z.object({
   resume_filename: z.string().max(255).optional(),
 
   // Step 2: Role & Engagement terms
-  primary_role: z.enum(['ai_engineer', 'forward_deployed_engineer', 'mobile_app_developer', 'solutions_architect', 'full_stack'] as const, {
-    message: 'Please select your primary engineering specialization',
-  }),
+  primary_role: z.string().min(1, 'Please select your primary engineering specialization'),
   contractual_agreement_accepted: z.boolean().refine(val => val === true, {
     message: 'You must acknowledge and accept contractual & project-based terms only.',
   }),
@@ -173,6 +173,41 @@ export const ROLE_LABELS: Record<string, { label: string; badgeClass: string; de
   },
   full_stack: {
     label: 'Full-Stack Developer',
+    badgeClass: 'bg-cyan-50 text-cyan-700 border-cyan-200 dark:bg-cyan-950/60 dark:text-cyan-300 dark:border-cyan-800',
+    desc: 'Next.js App Router, TypeScript, React, PostgreSQL, serverless APIs',
+  },
+  fractional_cto: {
+    label: 'Fractional CTO',
+    badgeClass: 'bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-950/60 dark:text-orange-300 dark:border-orange-800',
+    desc: 'Strategic leadership, architecture due diligence, cloud cost optimization, team scaling',
+  },
+  'fractional-cto': {
+    label: 'Fractional CTO',
+    badgeClass: 'bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-950/60 dark:text-orange-300 dark:border-orange-800',
+    desc: 'Strategic leadership, architecture due diligence, cloud cost optimization, team scaling',
+  },
+  'ai-llm-engineer': {
+    label: 'AI & LLM Engineer',
+    badgeClass: 'bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950/60 dark:text-purple-300 dark:border-purple-800',
+    desc: 'Fine-tuning, RAG, PyTorch, vLLM, Agentic frameworks, inference latency',
+  },
+  'forward-deployed-engineer': {
+    label: 'Forward Deployed Engineer (FDE)',
+    badgeClass: 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800',
+    desc: 'Enterprise deployments, client integrations, rapid prototyping, POC bridges',
+  },
+  'mobile-developers': {
+    label: 'Mobile Developers',
+    badgeClass: 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-800',
+    desc: 'iOS, Android, React Native, Flutter, Swift, Kotlin, offline sync',
+  },
+  'solutions-architects': {
+    label: 'Solutions Architects',
+    badgeClass: 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/60 dark:text-blue-300 dark:border-blue-800',
+    desc: 'Multi-cloud systems (AWS/GCP/Azure), distributed scale, microservices, SOC2',
+  },
+  'full-stack-developers': {
+    label: 'Full-Stack Developers',
     badgeClass: 'bg-cyan-50 text-cyan-700 border-cyan-200 dark:bg-cyan-950/60 dark:text-cyan-300 dark:border-cyan-800',
     desc: 'Next.js App Router, TypeScript, React, PostgreSQL, serverless APIs',
   },

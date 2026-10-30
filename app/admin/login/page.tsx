@@ -144,13 +144,50 @@ export default function AdminLoginPage() {
               </div>
             </form>
 
-            <div className="pt-4 border-t border-[#111113]/20 space-y-2 font-mono text-[11px] text-[#111113]/70">
-              <div className="flex items-center gap-1.5 font-bold text-[#111113] uppercase">
-                <ShieldCheck className="w-4 h-4 text-[#FF4D00]" />
-                Security Enforcement Active
+            <div className="pt-4 border-t border-[#111113]/20 space-y-3 font-mono text-[11px]">
+              <div className="flex items-center justify-between font-bold text-[#111113] uppercase text-[10px]">
+                <div className="flex items-center gap-1.5">
+                  <ShieldCheck className="w-4 h-4 text-[#FF4D00]" />
+                  <span>Quick Test Accounts (Password: lahore123$)</span>
+                </div>
               </div>
-              <p className="leading-relaxed">
-                Domain-wide open access and passwordless shortcuts have been decommissioned. Only verified credentials matching the single admin account can unlock candidate dossiers.
+              <div className="grid grid-cols-3 gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEmail('admin@talentpulse.com');
+                    setPassword('lahore123$');
+                  }}
+                  className="p-2 border border-[#111113] bg-[#F8F7F4] hover:bg-[#111113] hover:text-white text-left transition text-[10px]"
+                >
+                  <div className="font-bold text-[#FF4D00]">Admin</div>
+                  <div className="text-[9px] opacity-75">All access</div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEmail('sales@talentpulse.com');
+                    setPassword('lahore123$');
+                  }}
+                  className="p-2 border border-[#111113] bg-[#F8F7F4] hover:bg-[#111113] hover:text-white text-left transition text-[10px]"
+                >
+                  <div className="font-bold text-indigo-700">Sales Exec</div>
+                  <div className="text-[9px] opacity-75">Pipeline+Requests</div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEmail('hr@talentpulse.com');
+                    setPassword('lahore123$');
+                  }}
+                  className="p-2 border border-[#111113] bg-[#F8F7F4] hover:bg-[#111113] hover:text-white text-left transition text-[10px]"
+                >
+                  <div className="font-bold text-emerald-700">HR Exec</div>
+                  <div className="text-[9px] opacity-75">Pipeline+Roles+XLSX</div>
+                </button>
+              </div>
+              <p className="text-[#111113]/70 text-[10px] leading-relaxed pt-1">
+                Roles and permissions: Sales Executives can view/manage candidate pipeline &amp; hire requests (no data export); HR Executives can manage candidate pipeline, download native Excel (.xlsx) candidate exports, and manage Roles &amp; Technologies; Admins have full access.
               </p>
             </div>
           </div>

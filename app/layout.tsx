@@ -27,11 +27,12 @@ export const metadata: Metadata = {
   description: 'On-Demand Engineering Pool for Contractual & Project-Based Software Engineers, AI Engineers, and Forward Deployed Engineers (FDEs). Pure delivery.',
   icons: {
     icon: [
-      { url: '/assets/aistudio/favicon_239a93fd.png', type: 'image/png' },
+      { url: '/assets/aistudio/favicon_a799297b.png', type: 'image/png' },
       { url: '/favicon.ico' },
+      { url: '/favicon.png', type: 'image/png' },
     ],
-    shortcut: '/assets/aistudio/favicon_239a93fd.png',
-    apple: '/assets/aistudio/favicon_239a93fd.png',
+    shortcut: '/assets/aistudio/favicon_a799297b.png',
+    apple: '/assets/aistudio/favicon_a799297b.png',
   },
   openGraph: {
     title: 'TalentPulse Direct | Global On-Demand Engineering Pool',
