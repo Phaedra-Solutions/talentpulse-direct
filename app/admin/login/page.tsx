@@ -16,30 +16,37 @@ import {
 } from 'lucide-react';
 import { 
   signInHrRecruiter, 
+  getCurrentHrUser,
   AUTHORIZED_ADMIN_EMAIL 
 } from '@/lib/auth/recruiter-auth';
 
 export default function AdminLoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState<string>(AUTHORIZED_ADMIN_EMAIL);
-  const [password, setPassword] = useState('');
+  const [password, setPassword] = useState('lahore123$');
   const [isLoading, setIsLoading] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(() => {
-    if (typeof window === 'undefined') return null;
-    const params = new URLSearchParams(window.location.search);
-    if (params.get('error') === 'auth_required') {
-      return 'Authentication Required: The HR Recruiter Pipeline is strictly protected for internal administration. Please authenticate below to access candidate profiles.';
-    }
-    return null;
-  });
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const handleLogin = async (e?: React.FormEvent) => {
+  // If already authenticated and not explicitly signed out, direct to dashboard
+  React.useEffect(() => {
+    const user = getCurrentHrUser();
+    if (user && user.email) {
+      const params = new URLSearchParams(window.location.search);
+      const redirectUrl = params.get('redirect') || '/admin/dashboard';
+      router.replace(redirectUrl);
+    }
+  }, [router]);
+
+  const handleLogin = async (e?: React.FormEvent, customEmail?: string, customPass?: string) => {
     if (e) e.preventDefault();
-    if (!email.trim()) {
+    const loginEmail = (customEmail ?? email).trim();
+    const loginPass = (customPass ?? password).trim();
+
+    if (!loginEmail) {
       setErrorMessage('Please enter the designated administrator email.');
       return;
     }
-    if (!password.trim()) {
+    if (!loginPass) {
       setErrorMessage('Password is required. Unauthenticated access is not permitted.');
       return;
     }
@@ -48,10 +55,10 @@ export default function AdminLoginPage() {
     setErrorMessage(null);
 
     try {
-      const res = await signInHrRecruiter(email, password);
+      const res = await signInHrRecruiter(loginEmail, loginPass);
       if (res.success) {
         if (res.must_change_password) {
-          router.push(`/admin/change-password?email=${encodeURIComponent(email.trim())}&first_login=true`);
+          router.push(`/admin/change-password?email=${encodeURIComponent(loginEmail)}&first_login=true`);
           return;
         }
         const params = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
@@ -148,7 +155,7 @@ export default function AdminLoginPage() {
               <div className="flex items-center justify-between font-bold text-[#111113] uppercase text-[10px]">
                 <div className="flex items-center gap-1.5">
                   <ShieldCheck className="w-4 h-4 text-[#FF4D00]" />
-                  <span>Quick Test Accounts (Password: lahore123$)</span>
+                  <span>Quick Test Accounts</span>
                 </div>
               </div>
               <div className="grid grid-cols-3 gap-2">
@@ -157,33 +164,36 @@ export default function AdminLoginPage() {
                   onClick={() => {
                     setEmail('admin@talentpulse.com');
                     setPassword('lahore123$');
+                    handleLogin(undefined, 'admin@talentpulse.com', 'lahore123$');
                   }}
                   className="p-2 border border-[#111113] bg-[#F8F7F4] hover:bg-[#111113] hover:text-white text-left transition text-[10px]"
                 >
-                  <div className="font-bold text-[#FF4D00]">Admin</div>
-                  <div className="text-[9px] opacity-75">All access</div>
+                  <div className="font-bold text-[#FF4D00]">Super Admin</div>
+                  <div className="text-[9px] opacity-75">1-Click Login</div>
                 </button>
                 <button
                   type="button"
                   onClick={() => {
                     setEmail('sales@talentpulse.com');
                     setPassword('lahore123$');
+                    handleLogin(undefined, 'sales@talentpulse.com', 'lahore123$');
                   }}
                   className="p-2 border border-[#111113] bg-[#F8F7F4] hover:bg-[#111113] hover:text-white text-left transition text-[10px]"
                 >
                   <div className="font-bold text-indigo-700">Sales Exec</div>
-                  <div className="text-[9px] opacity-75">Pipeline+Requests</div>
+                  <div className="text-[9px] opacity-75">1-Click Login</div>
                 </button>
                 <button
                   type="button"
                   onClick={() => {
                     setEmail('hr@talentpulse.com');
                     setPassword('lahore123$');
+                    handleLogin(undefined, 'hr@talentpulse.com', 'lahore123$');
                   }}
                   className="p-2 border border-[#111113] bg-[#F8F7F4] hover:bg-[#111113] hover:text-white text-left transition text-[10px]"
                 >
                   <div className="font-bold text-emerald-700">HR Exec</div>
-                  <div className="text-[9px] opacity-75">Pipeline+Roles+XLSX</div>
+                  <div className="text-[9px] opacity-75">1-Click Login</div>
                 </button>
               </div>
               <p className="text-[#111113]/70 text-[10px] leading-relaxed pt-1">

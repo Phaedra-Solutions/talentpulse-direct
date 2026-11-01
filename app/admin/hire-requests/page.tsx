@@ -16,6 +16,7 @@ import {
 } from '@/lib/hire-request-store';
 import {
   getCurrentHrUser,
+  useCurrentHrUser,
   signOutHrRecruiter,
   isEmailAuthorizedForHr,
   HrUser,
@@ -56,17 +57,8 @@ import {
 export default function AdminHireRequestsPage() {
   const router = useRouter();
 
-  const [hrUser, setHrUser] = useState<HrUser | null>(() => {
-    if (typeof window === 'undefined') return null;
-    const user = getCurrentHrUser();
-    return user && user.email && isEmailAuthorizedForHr(user.email) ? user : null;
-  });
-
-  const [isAuthorized] = useState<boolean>(() => {
-    if (typeof window === 'undefined') return false;
-    const user = getCurrentHrUser();
-    return Boolean(user && user.email && isEmailAuthorizedForHr(user.email));
-  });
+  const hrUser = useCurrentHrUser();
+  const isAuthorized = Boolean(hrUser && hrUser.email && canAccessHireRequests(hrUser.role));
 
   const [requests, setRequests] = useState<HireRequest[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -85,15 +77,13 @@ export default function AdminHireRequestsPage() {
 
   // Auth gate: Restrict to Admins & Sales Executives (HR Executives redirected)
   useEffect(() => {
-    if (!isAuthorized) {
-      router.replace('/admin/login?error=auth_required');
-      return;
-    }
-    if (hrUser && !canAccessHireRequests(hrUser.role)) {
+    if (typeof window === 'undefined') return;
+    if (localStorage.getItem('talentpulse_signed_out') === 'true' && !hrUser) {
+      router.replace('/admin/login');
+    } else if (hrUser && !canAccessHireRequests(hrUser.role)) {
       router.replace('/admin/dashboard?unauthorized=hire-requests');
-      return;
     }
-  }, [isAuthorized, hrUser, router]);
+  }, [hrUser, router]);
 
   // Load requests
   const loadRequests = async () => {
@@ -271,7 +261,18 @@ export default function AdminHireRequestsPage() {
     setTimeout(() => setCopiedField(null), 2000);
   };
 
-  if (!isAuthorized || !hrUser) {
+  if (!hrUser) {
+    return (
+      <div className="min-h-screen bg-[#F8F7F4] flex flex-col items-center justify-center p-6">
+        <div className="w-12 h-12 border-4 border-[#111113] border-t-[#FF4D00] animate-spin mb-4" />
+        <span className="font-mono text-xs uppercase tracking-widest text-[#111113]/70">
+          Verifying Access Permissions...
+        </span>
+      </div>
+    );
+  }
+
+  if (!isAuthorized) {
     return (
       <div className="min-h-screen bg-[#F8F7F4] text-[#111113] flex flex-col font-sans">
         <Navbar />

@@ -36,8 +36,8 @@ export async function POST(req: NextRequest) {
     let adminProfile = {
       id: 'admin-master',
       email: normalizedEmail,
-      name: 'Admin',
-      role: 'admin',
+      name: 'Super Admin',
+      role: 'super_admin',
     };
 
     // 1. Query public.admin_users table in Supabase PostgreSQL
@@ -72,12 +72,13 @@ export async function POST(req: NextRequest) {
             const isRoleReset = typeof dbAdmin.role === 'string' && dbAdmin.role.includes(':reset');
             mustChangePassword = isFirstLogin || isRoleReset;
 
-            const cleanRole = typeof dbAdmin.role === 'string' ? dbAdmin.role.replace(':reset', '') : 'admin';
+            let cleanRole = typeof dbAdmin.role === 'string' ? dbAdmin.role.replace(':reset', '') : 'super_admin';
+            if (cleanRole === 'admin') cleanRole = 'super_admin';
 
             adminProfile = {
               id: dbAdmin.id,
               email: dbAdmin.email,
-              name: dbAdmin.full_name || 'Admin',
+              name: dbAdmin.full_name || 'Super Admin',
               role: cleanRole,
             };
 
@@ -159,11 +160,11 @@ export async function POST(req: NextRequest) {
         : 'Admin authentication successful.',
     });
 
-    // Set secure HTTP-only session cookie
+    // Set secure HTTP-only session cookie (supports both standard and embedded iframes)
     response.cookies.set('admin_session', sessionToken, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
+      secure: true,
+      sameSite: 'none',
       path: '/',
       maxAge: 60 * 60 * 24, // 24 hours
     });

@@ -17,6 +17,7 @@ import {
 import * as XLSX from 'xlsx';
 import { 
   getCurrentHrUser, 
+  useCurrentHrUser,
   signOutHrRecruiter, 
   isEmailAuthorizedForHr, 
   HrUser,
@@ -61,20 +62,8 @@ import {
 
 export default function AdminDashboardPage() {
   const router = useRouter();
-  const [hrUser, setHrUser] = useState<HrUser | null>(() => {
-    if (typeof window === 'undefined') return null;
-    const user = getCurrentHrUser();
-    return user && user.email && isEmailAuthorizedForHr(user.email) ? user : null;
-  });
-  const [isAuthorized, setIsAuthorized] = useState<boolean>(() => {
-    if (typeof window === 'undefined') return false;
-    const user = getCurrentHrUser();
-    return Boolean(user && user.email && isEmailAuthorizedForHr(user.email));
-  });
-  const [isCheckingAuth] = useState<boolean>(() => {
-    if (typeof window === 'undefined') return true;
-    return false;
-  });
+  const hrUser = useCurrentHrUser();
+  const isAuthorized = Boolean(hrUser && hrUser.email && isEmailAuthorizedForHr(hrUser.email));
   const [rawCandidates, setRawCandidates] = useState<Candidate[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isLiveSupabase, setIsLiveSupabase] = useState(false);
@@ -115,22 +104,18 @@ export default function AdminDashboardPage() {
 
   const handleSwitchSimulatedRole = (newRole: RecruiterRole) => {
     if (!hrUser) return;
-    const updated = updateHrUserSession({ role: newRole });
-    if (updated) {
-      setHrUser(updated);
-    }
+    updateHrUserSession({ role: newRole });
   };
 
-  // 1. Strict Auth Verification Gate: Redirect if unauthorized or first login
+  // 1. Strict Auth Verification Gate: Redirect if explicitly logged out or must change password
   useEffect(() => {
-    if (!isAuthorized) {
-      router.replace('/admin/login?error=auth_required');
-      return;
-    }
-    if (hrUser?.must_change_password) {
+    if (typeof window === 'undefined') return;
+    if (localStorage.getItem('talentpulse_signed_out') === 'true' && !hrUser) {
+      router.replace('/admin/login');
+    } else if (hrUser?.must_change_password) {
       router.replace(`/admin/change-password?email=${encodeURIComponent(hrUser.email)}&first_login=true`);
     }
-  }, [isAuthorized, hrUser, router]);
+  }, [hrUser, router]);
 
   // 2. Fetch all candidates once upon authentication or manual refresh
   const reloadCandidates = async () => {
@@ -374,8 +359,20 @@ export default function AdminDashboardPage() {
 
   const kanbanStages: PipelineStage[] = ['new', 'vetted', 'interviewing', 'assigned', 'on_hold'];
 
-  // Render blocked gate if unauthenticated or unauthorized
-  if (!isAuthorized || !hrUser) {
+  // Render loading while verifying session
+  if (!hrUser) {
+    return (
+      <div className="min-h-screen bg-[#F8F7F4] flex flex-col items-center justify-center p-6">
+        <div className="w-12 h-12 border-4 border-[#111113] border-t-[#FF4D00] animate-spin mb-4" />
+        <span className="font-mono text-xs uppercase tracking-widest text-[#111113]/70">
+          Loading Admin Pipeline...
+        </span>
+      </div>
+    );
+  }
+
+  // Render blocked gate if unauthorized
+  if (!isAuthorized) {
     return (
       <div className="min-h-screen bg-[#F8F7F4] text-[#111113] flex flex-col font-sans">
         <Navbar />
@@ -468,10 +465,9 @@ export default function AdminDashboardPage() {
                 className="bg-transparent font-bold text-[#111113] focus:outline-hidden cursor-pointer text-xs"
                 title="Switch active role clearance"
               >
-                <option value="admin">Admin (All Access)</option>
+                <option value="super_admin">Super Admin (All Access)</option>
                 <option value="sales_executive">Sales Executive (Pipeline &amp; Hire Requests)</option>
                 <option value="hr_executive">HR Executive (Pipeline, Roles &amp; XLSX Export)</option>
-                <option value="super_admin">Super Admin</option>
               </select>
             </div>
 

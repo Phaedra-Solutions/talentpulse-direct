@@ -6,12 +6,14 @@ import { useRouter } from 'next/navigation';
 import { Navbar } from '@/components/Navbar';
 import { 
   getCurrentHrUser, 
+  useCurrentHrUser,
   signOutHrRecruiter, 
   HrUser,
   RecruiterRole,
   AUTHORIZED_ADMIN_EMAIL,
   canManageAdminUsers,
-  getRoleBadgeInfo
+  getRoleBadgeInfo,
+  getAdminAuthHeaders
 } from '@/lib/auth/recruiter-auth';
 import { 
   Users, 
@@ -53,15 +55,8 @@ interface AdminUserItem {
 
 export default function AdminUsersManagementPage() {
   const router = useRouter();
-  const [currentUser] = useState<HrUser | null>(() => {
-    if (typeof window === 'undefined') return null;
-    return getCurrentHrUser();
-  });
-  const [isAuthorized] = useState<boolean>(() => {
-    if (typeof window === 'undefined') return false;
-    const user = getCurrentHrUser();
-    return Boolean(user && user.email);
-  });
+  const currentUser = useCurrentHrUser();
+  const isAuthorized = Boolean(currentUser && currentUser.email && canManageAdminUsers(currentUser.role));
   const [users, setUsers] = useState<AdminUserItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -72,7 +67,7 @@ export default function AdminUsersManagementPage() {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [newName, setNewName] = useState('');
   const [newEmail, setNewEmail] = useState('');
-  const [newRole, setNewRole] = useState<RecruiterRole>('admin');
+  const [newRole, setNewRole] = useState<RecruiterRole>('super_admin');
   const [newIsActive, setNewIsActive] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
@@ -93,12 +88,14 @@ export default function AdminUsersManagementPage() {
   const fetchUsers = async () => {
     setIsLoading(true);
     try {
-      const res = await fetch('/api/admin/users');
-      if (res.ok) {
-        const data = await res.json();
-        if (Array.isArray(data.users)) {
-          setUsers(data.users);
-        }
+      const authHeaders = getAdminAuthHeaders();
+      const res = await fetch('/api/admin/users', {
+        headers: { ...authHeaders },
+        credentials: 'include',
+      });
+      const data = await res.json();
+      if (Array.isArray(data.users)) {
+        setUsers(data.users);
       }
     } catch (err) {
       console.error('Failed to load admin users:', err);
@@ -107,24 +104,32 @@ export default function AdminUsersManagementPage() {
     }
   };
 
-  // Auth gate & Initial Fetch via Promise callback
+  // Auth gate navigation
   useEffect(() => {
-    if (!isAuthorized) {
-      router.replace('/admin/login?error=auth_required');
-      return;
-    }
-
-    if (currentUser && !canManageAdminUsers(currentUser.role)) {
+    if (typeof window === 'undefined') return;
+    if (localStorage.getItem('talentpulse_signed_out') === 'true' && !currentUser) {
+      router.replace('/admin/login');
+    } else if (currentUser && !canManageAdminUsers(currentUser.role)) {
       router.replace('/admin/dashboard?unauthorized=users');
-      return;
     }
+  }, [currentUser, router]);
 
+  // Initial Fetch when authorized
+  useEffect(() => {
+    if (!isAuthorized) return;
     let isCancelled = false;
-    fetch('/api/admin/users')
+    const authHeaders = getAdminAuthHeaders();
+
+    fetch('/api/admin/users', {
+      headers: { ...authHeaders },
+      credentials: 'include',
+    })
       .then((res) => res.json())
       .then((data) => {
-        if (!isCancelled && Array.isArray(data.users)) {
-          setUsers(data.users);
+        if (!isCancelled) {
+          if (Array.isArray(data.users)) {
+            setUsers(data.users);
+          }
           setIsLoading(false);
         }
       })
@@ -138,7 +143,7 @@ export default function AdminUsersManagementPage() {
     return () => {
       isCancelled = true;
     };
-  }, [isAuthorized, currentUser, router]);
+  }, [isAuthorized]);
 
   // Helper to generate full invite URL
   const buildInviteUrl = (token: string) => {
@@ -174,9 +179,14 @@ export default function AdminUsersManagementPage() {
     setAddError(null);
 
     try {
+      const authHeaders = getAdminAuthHeaders();
       const res = await fetch('/api/admin/users', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          ...authHeaders,
+        },
+        credentials: 'include',
         body: JSON.stringify({
           full_name: newName.trim(),
           email: newEmail.trim().toLowerCase(),
@@ -204,7 +214,7 @@ export default function AdminUsersManagementPage() {
       setIsAddModalOpen(false);
       setNewName('');
       setNewEmail('');
-      setNewRole('admin');
+      setNewRole('super_admin');
       setNewIsActive(true);
 
       // Refresh list
@@ -225,9 +235,14 @@ export default function AdminUsersManagementPage() {
 
     const nextStatus = !user.is_active;
     try {
+      const authHeaders = getAdminAuthHeaders();
       const res = await fetch('/api/admin/users', {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          ...authHeaders,
+        },
+        credentials: 'include',
         body: JSON.stringify({
           id: user.id,
           is_active: nextStatus,
@@ -253,9 +268,14 @@ export default function AdminUsersManagementPage() {
     }
 
     try {
+      const authHeaders = getAdminAuthHeaders();
       const res = await fetch('/api/admin/users', {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          ...authHeaders,
+        },
+        credentials: 'include',
         body: JSON.stringify({
           id: user.id,
           trigger_password_reset: true,
@@ -290,8 +310,13 @@ export default function AdminUsersManagementPage() {
     }
 
     try {
+      const authHeaders = getAdminAuthHeaders();
       const res = await fetch(`/api/admin/users?id=${user.id}`, {
         method: 'DELETE',
+        headers: {
+          ...authHeaders,
+        },
+        credentials: 'include',
       });
 
       if (res.ok) {
@@ -313,7 +338,10 @@ export default function AdminUsersManagementPage() {
       const matchesSearch =
         u.full_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
         u.email?.toLowerCase().includes(searchQuery.toLowerCase());
-      const matchesRole = roleFilter === 'all' || u.role === roleFilter;
+      const matchesRole =
+        roleFilter === 'all' ||
+        u.role === roleFilter ||
+        (roleFilter === 'super_admin' && (u.role === 'admin' || u.role === 'super_admin'));
       const matchesStatus =
         statusFilter === 'all' ||
         (statusFilter === 'active' && u.is_active) ||
@@ -330,6 +358,17 @@ export default function AdminUsersManagementPage() {
     const pendingFirstLogin = users.filter((u) => u.must_change_password).length;
     return { total, active, inactive, pendingFirstLogin };
   }, [users]);
+
+  if (!currentUser) {
+    return (
+      <div className="min-h-screen bg-[#F8F7F4] flex flex-col items-center justify-center p-6">
+        <div className="w-12 h-12 border-4 border-[#111113] border-t-[#FF4D00] animate-spin mb-4" />
+        <span className="font-mono text-xs uppercase tracking-widest text-[#111113]/70">
+          Verifying Administrator Clearance...
+        </span>
+      </div>
+    );
+  }
 
   if (!isAuthorized) {
     return null;
@@ -475,10 +514,9 @@ export default function AdminUsersManagementPage() {
                 className="px-3 py-2.5 border-2 border-[#111113] bg-[#F8F7F4] text-[#111113] font-bold focus:outline-hidden"
               >
                 <option value="all">All Roles</option>
-                <option value="admin">Admin</option>
+                <option value="super_admin">Super Admin</option>
                 <option value="sales_executive">Sales Executive</option>
                 <option value="hr_executive">HR Executive</option>
-                <option value="super_admin">Super Admin</option>
               </select>
 
               <select
@@ -701,16 +739,14 @@ export default function AdminUsersManagementPage() {
                     onChange={(e) => setNewRole(e.target.value as any)}
                     className="w-full font-mono text-xs px-3 py-2.5 border-2 border-[#111113] bg-white text-[#111113] font-bold focus:outline-hidden"
                   >
-                    <option value="admin">Admin (Full Unrestricted Access)</option>
+                    <option value="super_admin">Super Admin (Full Unrestricted Access)</option>
                     <option value="sales_executive">Sales Executive (Pipeline &amp; Hire Requests; No Exports)</option>
                     <option value="hr_executive">HR Executive (Pipeline, Bulk XLSX Export &amp; Roles/Tech)</option>
-                    <option value="super_admin">Super Admin (Primary Root Clearance)</option>
                   </select>
                   <p className="text-[10px] font-mono text-[#111113]/70 mt-1 leading-tight">
                     {newRole === 'sales_executive' && 'Permitted: Candidate Pipeline & Customer Hire Requests. Strictly cannot export data or manage roles/users.'}
                     {newRole === 'hr_executive' && 'Permitted: Candidate Pipeline, Bulk XLSX Excel Candidate Export & Roles & Technologies. Cannot access Hire Requests or Users.'}
-                    {newRole === 'admin' && 'Permitted: Full unrestricted access across all pipelines, customer hire requests, roles configuration, and admin clearance.'}
-                    {newRole === 'super_admin' && 'Root clearance across all modules and user management.'}
+                    {newRole === 'super_admin' && 'Root clearance across all modules, SEO suite, and user management.'}
                   </p>
                 </div>
 

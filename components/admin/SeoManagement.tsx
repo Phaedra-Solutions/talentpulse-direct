@@ -37,7 +37,7 @@ import {
   DEFAULT_SEO_SETTINGS,
   DEFAULT_PAGE_OVERRIDES
 } from '@/lib/seo-service';
-import { HrUser, canManageSeo } from '@/lib/auth/recruiter-auth';
+import { HrUser, canManageSeo, getAdminAuthHeaders } from '@/lib/auth/recruiter-auth';
 
 interface SeoManagementProps {
   hrUser: HrUser | null;
@@ -97,11 +97,14 @@ export function SeoManagement({ hrUser }: SeoManagementProps) {
     setSaveSuccess(null);
 
     try {
+      const authHeaders = getAdminAuthHeaders();
       const res = await fetch('/api/admin/seo', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...authHeaders,
         },
+        credentials: 'include',
         body: JSON.stringify(settings),
       });
 
@@ -128,9 +131,14 @@ export function SeoManagement({ hrUser }: SeoManagementProps) {
 
     setIsSaving(true);
     try {
+      const authHeaders = getAdminAuthHeaders();
       const res = await fetch('/api/admin/seo/pages', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          ...authHeaders,
+        },
+        credentials: 'include',
         body: JSON.stringify(override),
       });
       const data = await res.json();
@@ -162,8 +170,13 @@ export function SeoManagement({ hrUser }: SeoManagementProps) {
     if (!confirm(`Are you sure you want to delete the custom override for ${path}?`)) return;
 
     try {
+      const authHeaders = getAdminAuthHeaders();
       const res = await fetch(`/api/admin/seo/pages?path=${encodeURIComponent(path)}`, {
         method: 'DELETE',
+        headers: {
+          ...authHeaders,
+        },
+        credentials: 'include',
       });
       const data = await res.json();
       if (!res.ok || !data.success) throw new Error(data.error || 'Delete failed');

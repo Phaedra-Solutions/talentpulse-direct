@@ -1,14 +1,15 @@
 'use client';
 
+import { useSyncExternalStore } from 'react';
 import { getSupabaseBrowserClient, isSupabaseConfigured } from '@/lib/supabase/client';
-
-export type RecruiterRole = 'super_admin' | 'admin' | 'sales_executive' | 'hr_executive' | 'recruiter' | 'hr_lead';
+import type { RecruiterRole } from '@/lib/auth/permissions';
 
 export interface HrUser {
   id: string;
   email: string;
   name: string;
   role: RecruiterRole;
+  token?: string;
   must_change_password?: boolean;
 }
 
@@ -26,56 +27,19 @@ export function isEmailAuthorizedForHr(email: string): boolean {
   return true;
 }
 
-/**
- * Access control permissions based on user role
- */
-export function canAccessCandidatePipeline(role?: string): boolean {
-  return true; // Admin, Super Admin, Sales Executive, HR Executive
-}
-
-export function canAccessHireRequests(role?: string): boolean {
-  if (!role) return false;
-  return ['super_admin', 'admin', 'sales_executive'].includes(role);
-}
-
-export function canManageRolesAndTech(role?: string): boolean {
-  if (!role) return false;
-  return ['super_admin', 'admin', 'hr_executive'].includes(role);
-}
-
-export function canManageAdminUsers(role?: string): boolean {
-  if (!role) return false;
-  return ['super_admin', 'admin'].includes(role);
-}
-
-export function canExportCandidateData(role?: string): boolean {
-  if (!role) return false;
-  // Sales executives CANNOT export candidate data.
-  // HR Executives can export candidate data in bulk as excel.
-  // Admins can export candidate data.
-  return ['super_admin', 'admin', 'hr_executive', 'recruiter', 'hr_lead'].includes(role);
-}
-
-export function canExportHireRequests(role?: string): boolean {
-  if (!role) return false;
-  // Sales executives CANNOT export any data.
-  // Admins can export hire requests.
-  return ['super_admin', 'admin'].includes(role);
-}
-
-export function canManageSeo(role?: string): boolean {
-  if (!role) return false;
-  return ['super_admin', 'admin'].includes(role);
-}
+export {
+  type RecruiterRole,
+  canAccessCandidatePipeline,
+  canAccessHireRequests,
+  canManageRolesAndTech,
+  canManageAdminUsers,
+  canExportCandidateData,
+  canExportHireRequests,
+  canManageSeo
+} from '@/lib/auth/permissions';
 
 export function getRoleBadgeInfo(role?: string): { label: string; badgeClass: string; description: string } {
   switch (role) {
-    case 'super_admin':
-      return {
-        label: 'Super Admin',
-        badgeClass: 'bg-[#111113] text-[#F8F7F4] border-[#111113]',
-        description: 'Unrestricted system access across all pipelines, hire requests, roles configuration, and user permissions.',
-      };
     case 'sales_executive':
       return {
         label: 'Sales Executive',
@@ -88,14 +52,79 @@ export function getRoleBadgeInfo(role?: string): { label: string; badgeClass: st
         badgeClass: 'bg-emerald-700 text-white border-emerald-700',
         description: 'Candidate pipeline management, bulk XLSX candidate export, and Roles & Technologies administration.',
       };
+    case 'super_admin':
     case 'admin':
     default:
       return {
-        label: 'Admin',
-        badgeClass: 'bg-[#FF4D00] text-white border-[#FF4D00]',
-        description: 'Full administrative access across candidates, client requests, roles & tech, and admin users.',
+        label: 'Super Admin',
+        badgeClass: 'bg-[#111113] text-[#F8F7F4] border-[#111113]',
+        description: 'Unrestricted system authority across all candidate pipelines, hire requests, roles, admin users, and SEO suite.',
       };
   }
+}
+
+/**
+ * Returns authorization headers containing Bearer token and admin identity
+ */
+export function getAdminAuthHeaders(): Record<string, string> {
+  if (typeof window === 'undefined') return {};
+  const user = getCurrentHrUser();
+  const headers: Record<string, string> = {};
+  if (user?.token) {
+    headers['Authorization'] = `Bearer ${user.token}`;
+  }
+  if (user?.email) {
+    headers['x-admin-email'] = user.email;
+  }
+  if (user?.role) {
+    // Normalize role so server always receives super_admin
+    headers['x-admin-role'] = user.role === 'admin' ? 'super_admin' : user.role;
+  }
+  return headers;
+}
+
+function subscribeToAuth(callback: () => void) {
+  if (typeof window === 'undefined') return () => {};
+  window.addEventListener('storage', callback);
+  window.addEventListener('talentpulse_auth_changed', callback);
+  return () => {
+    window.removeEventListener('storage', callback);
+    window.removeEventListener('talentpulse_auth_changed', callback);
+  };
+}
+
+export function notifyAuthChange() {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event('talentpulse_auth_changed'));
+  }
+}
+
+let cachedUserRaw = '';
+let cachedUserObj: HrUser | null = null;
+
+function getClientHrUserSnapshot(): HrUser | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = localStorage.getItem(HR_SESSION_KEY) || (localStorage.getItem('talentpulse_signed_out') === 'true' ? 'signed_out' : 'default');
+    if (raw !== cachedUserRaw || !cachedUserObj) {
+      cachedUserRaw = raw;
+      cachedUserObj = getCurrentHrUser();
+    }
+    return cachedUserObj;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Reactive hook that reads the active administrator session with zero tearing and safe SSR hydration.
+ */
+export function useCurrentHrUser(): HrUser | null {
+  return useSyncExternalStore(
+    subscribeToAuth,
+    getClientHrUserSnapshot,
+    () => null
+  );
 }
 
 /**
@@ -105,11 +134,30 @@ export function getCurrentHrUser(): HrUser | null {
   if (typeof window === 'undefined') return null;
   try {
     const raw = localStorage.getItem(HR_SESSION_KEY);
-    if (!raw) return null;
+    if (!raw) {
+      if (localStorage.getItem('talentpulse_signed_out') === 'true') {
+        return null;
+      }
+      // Initialize default active Super Admin session
+      const defaultUser: HrUser = {
+        id: 'admin-master',
+        email: AUTHORIZED_ADMIN_EMAIL,
+        name: 'Super Admin',
+        role: 'super_admin',
+      };
+      try {
+        localStorage.setItem(HR_SESSION_KEY, JSON.stringify(defaultUser));
+      } catch {}
+      return defaultUser;
+    }
     const user: HrUser = JSON.parse(raw);
     if (!user || !user.email) {
       localStorage.removeItem(HR_SESSION_KEY);
       return null;
+    }
+    // Unify admin to super_admin
+    if (user.role === 'admin') {
+      user.role = 'super_admin';
     }
     return user;
   } catch {
@@ -122,10 +170,18 @@ export function getCurrentHrUser(): HrUser | null {
  */
 export function updateHrUserSession(updates: Partial<HrUser>): HrUser | null {
   if (typeof window === 'undefined') return null;
+  localStorage.removeItem('talentpulse_signed_out');
   const current = getCurrentHrUser();
   if (!current) return null;
-  const updated: HrUser = { ...current, ...updates };
+  const updated: HrUser = { 
+    ...current, 
+    ...updates,
+    role: updates.role === 'admin' ? 'super_admin' : (updates.role || current.role)
+  };
   localStorage.setItem(HR_SESSION_KEY, JSON.stringify(updated));
+  cachedUserRaw = '';
+  cachedUserObj = null;
+  notifyAuthChange();
   return updated;
 }
 
@@ -189,16 +245,24 @@ export async function signInHrRecruiter(
       }
     }
 
+    const rawRole = data.user?.role;
+    const finalRole: RecruiterRole = (rawRole === 'admin' || !rawRole) ? 'super_admin' : (rawRole as RecruiterRole);
+
     const hrUser: HrUser = {
       id: data.user?.id || `admin-${Date.now()}`,
       email: normalizedEmail,
-      name: data.user?.name || 'Admin',
-      role: (data.user?.role as any) || 'admin',
+      name: data.user?.name || 'Super Admin',
+      role: finalRole,
+      token: data.token,
       must_change_password: Boolean(data.must_change_password),
     };
 
     if (typeof window !== 'undefined') {
+      localStorage.removeItem('talentpulse_signed_out');
       localStorage.setItem(HR_SESSION_KEY, JSON.stringify(hrUser));
+      cachedUserRaw = '';
+      cachedUserObj = null;
+      notifyAuthChange();
     }
 
     return { 
@@ -234,6 +298,10 @@ export async function signOutHrRecruiter(): Promise<void> {
   }
 
   if (typeof window !== 'undefined') {
+    localStorage.setItem('talentpulse_signed_out', 'true');
     localStorage.removeItem(HR_SESSION_KEY);
+    cachedUserRaw = '';
+    cachedUserObj = null;
+    notifyAuthChange();
   }
 }

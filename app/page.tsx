@@ -90,14 +90,6 @@ export default function HomePage() {
               <Link href="/apply" className="btn-brutalist">
                 <span>Join Talent Pool</span>
               </Link>
-
-              <Link href="/candidate/update" className="btn-brutalist">
-                <span>Update Availability</span>
-              </Link>
-
-              <Link href="/admin/dashboard" className="btn-brutalist border-dashed">
-                <span>HR Pipeline</span>
-              </Link>
             </div>
           </div>
 

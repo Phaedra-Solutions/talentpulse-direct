@@ -7,6 +7,7 @@ import { Navbar } from '@/components/Navbar';
 import { SeoManagement } from '@/components/admin/SeoManagement';
 import { 
   getCurrentHrUser, 
+  useCurrentHrUser,
   isEmailAuthorizedForHr, 
   HrUser,
   canManageSeo,
@@ -28,23 +29,19 @@ import {
 
 export default function AdminSeoPage() {
   const router = useRouter();
-  const [hrUser] = useState<HrUser | null>(() => {
-    if (typeof window === 'undefined') return null;
-    const user = getCurrentHrUser();
-    return user && user.email && isEmailAuthorizedForHr(user.email) ? user : null;
-  });
-
+  const hrUser = useCurrentHrUser();
   const isAuthorized = Boolean(hrUser && canManageSeo(hrUser.role));
 
   useEffect(() => {
-    if (!hrUser) {
+    if (typeof window === 'undefined') return;
+    if (localStorage.getItem('talentpulse_signed_out') === 'true' && !hrUser) {
       router.push('/admin/login?redirect=/admin/seo');
-    } else if (!canManageSeo(hrUser.role)) {
+    } else if (hrUser && !canManageSeo(hrUser.role)) {
       router.push('/admin/dashboard?unauthorized=seo');
     }
   }, [hrUser, router]);
 
-  if (!isAuthorized) {
+  if (!hrUser || !isAuthorized) {
     return (
       <div className="min-h-screen bg-[#F8F7F4] flex flex-col items-center justify-center p-6">
         <div className="w-12 h-12 border-4 border-[#111113] border-t-[#FF4D00] animate-spin mb-4" />
