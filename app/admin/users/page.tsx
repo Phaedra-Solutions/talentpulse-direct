@@ -107,9 +107,9 @@ export default function AdminUsersManagementPage() {
   // Auth gate navigation
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    if (localStorage.getItem('talentpulse_signed_out') === 'true' && !currentUser) {
-      router.replace('/admin/login');
-    } else if (currentUser && !canManageAdminUsers(currentUser.role)) {
+    if (!currentUser) {
+      router.replace('/admin/login?redirect=/admin/users');
+    } else if (!canManageAdminUsers(currentUser.role)) {
       router.replace('/admin/dashboard?unauthorized=users');
     }
   }, [currentUser, router]);

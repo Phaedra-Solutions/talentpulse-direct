@@ -7,7 +7,8 @@ export type RecruiterRole = 'super_admin' | 'sales_executive' | 'hr_executive' |
  * Super Admin has unrestricted authority across the entire platform.
  */
 export function canAccessCandidatePipeline(role?: string): boolean {
-  return true;
+  if (!role) return false;
+  return ['super_admin', 'admin', 'sales_executive', 'hr_executive', 'recruiter', 'hr_lead'].includes(role);
 }
 
 export function canAccessHireRequests(role?: string): boolean {

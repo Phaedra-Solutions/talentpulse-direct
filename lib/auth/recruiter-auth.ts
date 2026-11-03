@@ -105,8 +105,8 @@ let cachedUserObj: HrUser | null = null;
 function getClientHrUserSnapshot(): HrUser | null {
   if (typeof window === 'undefined') return null;
   try {
-    const raw = localStorage.getItem(HR_SESSION_KEY) || (localStorage.getItem('talentpulse_signed_out') === 'true' ? 'signed_out' : 'default');
-    if (raw !== cachedUserRaw || !cachedUserObj) {
+    const raw = localStorage.getItem(HR_SESSION_KEY) || 'unauthenticated';
+    if (raw !== cachedUserRaw) {
       cachedUserRaw = raw;
       cachedUserObj = getCurrentHrUser();
     }
@@ -129,29 +129,17 @@ export function useCurrentHrUser(): HrUser | null {
 
 /**
  * Get current active HR admin session.
+ * Requires user to have logged in. Never auto-seeds admin sessions for unauthenticated visitors.
  */
 export function getCurrentHrUser(): HrUser | null {
   if (typeof window === 'undefined') return null;
   try {
     const raw = localStorage.getItem(HR_SESSION_KEY);
     if (!raw) {
-      if (localStorage.getItem('talentpulse_signed_out') === 'true') {
-        return null;
-      }
-      // Initialize default active Super Admin session
-      const defaultUser: HrUser = {
-        id: 'admin-master',
-        email: AUTHORIZED_ADMIN_EMAIL,
-        name: 'Super Admin',
-        role: 'super_admin',
-      };
-      try {
-        localStorage.setItem(HR_SESSION_KEY, JSON.stringify(defaultUser));
-      } catch {}
-      return defaultUser;
+      return null;
     }
     const user: HrUser = JSON.parse(raw);
-    if (!user || !user.email) {
+    if (!user || !user.email || !user.role) {
       localStorage.removeItem(HR_SESSION_KEY);
       return null;
     }

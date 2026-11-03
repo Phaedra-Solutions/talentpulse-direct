@@ -121,8 +121,8 @@ export default function AdminRolesManagementPage() {
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    if (localStorage.getItem('talentpulse_signed_out') === 'true' && !hrUser) {
-      router.replace('/admin/login');
+    if (!hrUser) {
+      router.replace('/admin/login?redirect=/admin/roles');
     } else if (hrUser && !canManageRolesAndTech(hrUser.role)) {
       router.replace('/admin/dashboard?unauthorized=roles');
     }
@@ -374,9 +374,9 @@ export default function AdminRolesManagementPage() {
     return t.name.toLowerCase().includes(techSearch.toLowerCase());
   });
 
-  if (!hrUser) {
+  if (!hrUser || !canManageRolesAndTech(hrUser.role)) {
     return (
-      <div className="min-h-screen bg-[#F8F7F4] flex flex-col items-center justify-center p-6">
+      <div className="min-h-screen bg-[#F8F7F4] flex flex-col items-center justify-center p-6 text-center">
         <div className="w-12 h-12 border-4 border-[#111113] border-t-[#FF4D00] animate-spin mb-4" />
         <span className="font-mono text-xs uppercase tracking-widest text-[#111113]/70">
           Verifying Permissions...

@@ -1,14 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getTechnologiesList, submitCustomTechnology } from '@/lib/roles-tech-store';
-import { verifyAdminSessionToken } from '@/lib/auth/admin-password';
-
-function getAdminSession(req: NextRequest) {
-  const cookie = req.cookies.get('admin_session')?.value;
-  const authHeader = req.headers.get('authorization')?.replace(/^Bearer\s+/i, '');
-  const token = cookie || authHeader;
-  if (!token) return null;
-  return verifyAdminSessionToken(token);
-}
+import { getAuthenticatedAdmin } from '@/lib/auth/server-auth';
+import { canManageRolesAndTech } from '@/lib/auth/permissions';
 
 export async function GET(req: NextRequest) {
   try {
@@ -19,12 +12,12 @@ export async function GET(req: NextRequest) {
     const limitParam = searchParams.get('limit');
     const limit = limitParam ? parseInt(limitParam, 10) : undefined;
 
-    // Only authenticated admin can view 'pending', 'rejected', or 'all'
+    // Only authenticated Super Admin and HR Executives can view 'pending', 'rejected', or 'all'
     let status: any = statusParam;
     if (statusParam !== 'approved') {
-      const session = getAdminSession(req);
-      if (!session) {
-        status = 'approved'; // Force approved for public users
+      const session = getAuthenticatedAdmin(req);
+      if (!session || !canManageRolesAndTech(session.role)) {
+        status = 'approved'; // Force approved for public/unauthorized callers
       }
     }
 

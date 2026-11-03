@@ -1,14 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getRoleBySlugOrId, updateRoleRecord, deleteRoleRecord, getCandidateCountForRole } from '@/lib/roles-tech-store';
-import { verifyAdminSessionToken } from '@/lib/auth/admin-password';
-
-function getAdminSession(req: NextRequest) {
-  const cookie = req.cookies.get('admin_session')?.value;
-  const authHeader = req.headers.get('authorization')?.replace(/^Bearer\s+/i, '');
-  const token = cookie || authHeader;
-  if (!token) return null;
-  return verifyAdminSessionToken(token);
-}
+import { requireAdminAuth } from '@/lib/auth/server-auth';
+import { canManageRolesAndTech } from '@/lib/auth/permissions';
 
 export async function GET(
   req: NextRequest,
@@ -32,10 +25,8 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = getAdminSession(req);
-    if (!session) {
-      return NextResponse.json({ success: false, error: 'Unauthorized admin session' }, { status: 401 });
-    }
+    const auth = requireAdminAuth(req, canManageRolesAndTech);
+    if (auth.errorResponse) return auth.errorResponse;
 
     const { id } = await params;
     const body = await req.json();
@@ -51,10 +42,8 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = getAdminSession(req);
-    if (!session) {
-      return NextResponse.json({ success: false, error: 'Unauthorized admin session' }, { status: 401 });
-    }
+    const auth = requireAdminAuth(req, canManageRolesAndTech);
+    if (auth.errorResponse) return auth.errorResponse;
 
     const { id } = await params;
     const result = await deleteRoleRecord(id);

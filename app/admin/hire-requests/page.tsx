@@ -78,8 +78,8 @@ export default function AdminHireRequestsPage() {
   // Auth gate: Restrict to Admins & Sales Executives (HR Executives redirected)
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    if (localStorage.getItem('talentpulse_signed_out') === 'true' && !hrUser) {
-      router.replace('/admin/login');
+    if (!hrUser) {
+      router.replace('/admin/login?redirect=/admin/hire-requests');
     } else if (hrUser && !canAccessHireRequests(hrUser.role)) {
       router.replace('/admin/dashboard?unauthorized=hire-requests');
     }

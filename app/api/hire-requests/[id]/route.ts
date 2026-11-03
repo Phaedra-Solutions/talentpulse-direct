@@ -1,12 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { updateHireRequestStatusAndNotes, deleteHireRequest } from '@/lib/hire-request-store';
 import { HireRequestStatus } from '@/types/hire-request';
+import { requireAdminAuth } from '@/lib/auth/server-auth';
+import { canAccessHireRequests } from '@/lib/auth/permissions';
 
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const auth = requireAdminAuth(request, canAccessHireRequests);
+    if (auth.errorResponse) return auth.errorResponse;
+
     const { id } = await params;
     const body = await request.json();
     const { status, offline_notes } = body;
@@ -53,6 +58,9 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const auth = requireAdminAuth(request, canAccessHireRequests);
+    if (auth.errorResponse) return auth.errorResponse;
+
     const { id } = await params;
     await deleteHireRequest(id);
     return NextResponse.json({

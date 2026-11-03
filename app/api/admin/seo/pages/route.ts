@@ -1,36 +1,14 @@
 // app/api/admin/seo/pages/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { getPageSeoOverrides, upsertPageSeoOverride, deletePageSeoOverride, PageSeoOverride } from '@/lib/seo-service';
-import { verifyAdminSessionToken } from '@/lib/auth/admin-password';
+import { requireAdminAuth } from '@/lib/auth/server-auth';
 import { canManageSeo } from '@/lib/auth/permissions';
 
-function getAdminSession(req: NextRequest) {
-  const cookie = req.cookies.get('admin_session')?.value;
-  const authHeader = req.headers.get('authorization')?.replace(/^Bearer\s+/i, '');
-  const customToken = req.headers.get('x-admin-token');
-  const token = cookie || authHeader || customToken;
-
-  if (token) {
-    const verified = verifyAdminSessionToken(token);
-    if (verified) return verified;
-  }
-
-  const headerEmail = req.headers.get('x-admin-email');
-  const headerRole = req.headers.get('x-admin-role');
-  if (headerEmail && headerRole && canManageSeo(headerRole)) {
-    return {
-      userId: 'client-verified',
-      email: headerEmail,
-      role: headerRole === 'admin' ? 'super_admin' : headerRole,
-      exp: Date.now() + 3600000,
-    };
-  }
-
-  return null;
-}
-
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
+    const auth = requireAdminAuth(req, canManageSeo);
+    if (auth.errorResponse) return auth.errorResponse;
+
     const overrides = await getPageSeoOverrides();
     return NextResponse.json({ pages: overrides, success: true });
   } catch (error: any) {
@@ -43,13 +21,8 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   try {
-    const session = getAdminSession(req);
-    if (!session || !canManageSeo(session.role)) {
-      return NextResponse.json(
-        { error: 'Unauthorized. Only administrators can update page SEO overrides.', success: false },
-        { status: 403 }
-      );
-    }
+    const auth = requireAdminAuth(req, canManageSeo);
+    if (auth.errorResponse) return auth.errorResponse;
 
     const body = (await req.json()) as PageSeoOverride;
     if (!body || !body.path) {
@@ -75,13 +48,8 @@ export async function POST(req: NextRequest) {
 
 export async function DELETE(req: NextRequest) {
   try {
-    const session = getAdminSession(req);
-    if (!session || !canManageSeo(session.role)) {
-      return NextResponse.json(
-        { error: 'Unauthorized. Only administrators can delete page SEO overrides.', success: false },
-        { status: 403 }
-      );
-    }
+    const auth = requireAdminAuth(req, canManageSeo);
+    if (auth.errorResponse) return auth.errorResponse;
 
     const { searchParams } = new URL(req.url);
     const path = searchParams.get('path');

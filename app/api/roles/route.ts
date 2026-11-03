@@ -1,19 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getRolesList, createRoleRecord } from '@/lib/roles-tech-store';
-import { verifyAdminSessionToken } from '@/lib/auth/admin-password';
-
-function getAdminSession(req: NextRequest) {
-  const cookie = req.cookies.get('admin_session')?.value;
-  const authHeader = req.headers.get('authorization')?.replace(/^Bearer\s+/i, '');
-  const token = cookie || authHeader;
-  if (!token) return null;
-  return verifyAdminSessionToken(token);
-}
+import { requireAdminAuth, getAuthenticatedAdmin } from '@/lib/auth/server-auth';
+import { canManageRolesAndTech } from '@/lib/auth/permissions';
 
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
-    const includeClosed = searchParams.get('includeClosed') !== 'false';
+    const requestedIncludeClosed = searchParams.get('includeClosed') !== 'false';
+    
+    // Closed internal roles are only visible to authenticated Super Admin & HR Executives
+    let includeClosed = false;
+    if (requestedIncludeClosed) {
+      const session = getAuthenticatedAdmin(req);
+      if (session && canManageRolesAndTech(session.role)) {
+        includeClosed = true;
+      }
+    }
+
     const roles = await getRolesList(includeClosed);
     return NextResponse.json({ success: true, roles });
   } catch (err: any) {
@@ -23,10 +26,8 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const session = getAdminSession(req);
-    if (!session) {
-      return NextResponse.json({ success: false, error: 'Unauthorized admin session' }, { status: 401 });
-    }
+    const auth = requireAdminAuth(req, canManageRolesAndTech);
+    if (auth.errorResponse) return auth.errorResponse;
 
     const body = await req.json();
     if (!body.title) {

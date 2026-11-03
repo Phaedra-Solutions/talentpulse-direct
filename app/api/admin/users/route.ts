@@ -5,41 +5,16 @@ import {
   generateSalt, 
   hashAdminPassword, 
   generateTemporaryPassword, 
-  generateInviteToken,
-  verifyAdminSessionToken
+  generateInviteToken
 } from '@/lib/auth/admin-password';
-
-/**
- * Extract and verify admin session from cookie or Authorization header
- */
-function getAdminSession(req: NextRequest) {
-  const cookie = req.cookies.get('admin_session')?.value;
-  const authHeader = req.headers.get('authorization')?.replace(/^Bearer\s+/i, '');
-  const customToken = req.headers.get('x-admin-token');
-  const token = cookie || authHeader || customToken;
-
-  if (token) {
-    const verified = verifyAdminSessionToken(token);
-    if (verified) return verified;
-  }
-
-  // Header-based fallback for browser clients with iframe restrictions
-  const headerEmail = req.headers.get('x-admin-email');
-  const headerRole = req.headers.get('x-admin-role');
-  if (headerEmail) {
-    return {
-      userId: 'client-verified',
-      email: headerEmail,
-      role: headerRole === 'admin' ? 'super_admin' : (headerRole || 'super_admin'),
-      exp: Date.now() + 3600000,
-    };
-  }
-
-  return null;
-}
+import { requireAdminAuth } from '@/lib/auth/server-auth';
+import { canManageAdminUsers } from '@/lib/auth/permissions';
 
 export async function GET(req: NextRequest) {
   try {
+    const auth = requireAdminAuth(req, canManageAdminUsers);
+    if (auth.errorResponse) return auth.errorResponse;
+
     const supabase = getSupabaseServerClient();
     const fallbackAdmins = [
       {
@@ -84,15 +59,6 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    // Require valid admin authentication in production
-    const session = getAdminSession(req);
-    if (!session) {
-      return NextResponse.json({
-        users: fallbackAdmins,
-        source: 'fallback_unauthenticated'
-      });
-    }
-
     const { data, error } = await supabase
       .from('admin_users')
       .select('id, email, full_name, role, is_active, last_login_at, created_at, updated_at')
@@ -127,14 +93,8 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    // Require valid admin authentication in production
-    const session = getAdminSession(req);
-    if (isServerSupabaseConfigured && !session) {
-      return NextResponse.json(
-        { error: 'Unauthorized: Admin authentication session required to provision users.' },
-        { status: 401 }
-      );
-    }
+    const auth = requireAdminAuth(req, canManageAdminUsers);
+    if (auth.errorResponse) return auth.errorResponse;
 
     const body = await req.json();
     const { full_name, email, role = 'admin', is_active = true } = body || {};
@@ -226,14 +186,8 @@ export async function POST(req: NextRequest) {
 
 export async function PATCH(req: NextRequest) {
   try {
-    // Require valid admin authentication in production
-    const session = getAdminSession(req);
-    if (isServerSupabaseConfigured && !session) {
-      return NextResponse.json(
-        { error: 'Unauthorized: Admin authentication session required to modify users.' },
-        { status: 401 }
-      );
-    }
+    const auth = requireAdminAuth(req, canManageAdminUsers);
+    if (auth.errorResponse) return auth.errorResponse;
 
     const body = await req.json();
     const { id, is_active, role, full_name, trigger_password_reset } = body || {};
@@ -319,14 +273,8 @@ export async function PATCH(req: NextRequest) {
 
 export async function DELETE(req: NextRequest) {
   try {
-    // Require valid admin authentication in production
-    const session = getAdminSession(req);
-    if (isServerSupabaseConfigured && !session) {
-      return NextResponse.json(
-        { error: 'Unauthorized: Admin authentication session required to delete users.' },
-        { status: 401 }
-      );
-    }
+    const auth = requireAdminAuth(req, canManageAdminUsers);
+    if (auth.errorResponse) return auth.errorResponse;
 
     const { searchParams } = new URL(req.url);
     const id = searchParams.get('id');

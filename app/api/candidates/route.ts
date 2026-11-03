@@ -2,15 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseServerClient, isServerSupabaseConfigured } from '@/lib/supabase/server';
 import { candidateApplicationSchema, Candidate } from '@/types/candidate';
 import { INITIAL_MOCK_CANDIDATES } from '@/lib/mock-data';
-import { verifyAdminSessionToken } from '@/lib/auth/admin-password';
-
-function getAdminSession(req: NextRequest) {
-  const cookie = req.cookies.get('admin_session')?.value;
-  const authHeader = req.headers.get('authorization')?.replace(/^Bearer\s+/i, '');
-  const token = cookie || authHeader;
-  if (!token) return null;
-  return verifyAdminSessionToken(token);
-}
+import { getAuthenticatedAdmin, requireAdminAuth } from '@/lib/auth/server-auth';
+import { canAccessCandidatePipeline } from '@/lib/auth/permissions';
 
 function sanitizeCandidateForPublic(c: Candidate): Candidate {
   return {
@@ -62,8 +55,8 @@ export async function GET(req: NextRequest) {
   const pipelineStage = searchParams.get('pipelineStage');
   const email = searchParams.get('email');
 
-  const session = getAdminSession(req);
-  const isAdmin = Boolean(session);
+  const session = getAuthenticatedAdmin(req);
+  const isAdmin = Boolean(session && canAccessCandidatePipeline(session.role));
 
   const supabase = getSupabaseServerClient();
 
@@ -169,12 +162,9 @@ export async function PATCH(req: NextRequest) {
 
     // Pipeline stage and internal notes modifications require authenticated admin
     if (updates.pipeline_stage !== undefined || updates.internal_notes !== undefined) {
-      const session = getAdminSession(req);
-      if (isServerSupabaseConfigured && !session) {
-        return NextResponse.json(
-          { error: 'Unauthorized: Admin authentication session required to update candidate pipeline stage or internal notes.' },
-          { status: 401 }
-        );
+      const auth = requireAdminAuth(req, canAccessCandidatePipeline);
+      if (auth.errorResponse) {
+        return auth.errorResponse;
       }
     }
 

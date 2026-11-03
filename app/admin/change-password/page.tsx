@@ -51,6 +51,16 @@ export default function AdminChangePasswordPage() {
     return firstParam || Boolean(user?.must_change_password);
   });
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const emailParam = params.get('email');
+    const user = getCurrentHrUser();
+    if (!emailParam && !user) {
+      router.replace('/admin/login');
+    }
+  }, [router]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);

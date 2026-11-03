@@ -1,37 +1,14 @@
 // app/api/admin/seo/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { getSeoSettings, updateSeoSettings, SeoSettings } from '@/lib/seo-service';
-import { verifyAdminSessionToken } from '@/lib/auth/admin-password';
+import { requireAdminAuth } from '@/lib/auth/server-auth';
 import { canManageSeo } from '@/lib/auth/permissions';
 
-function getAdminSession(req: NextRequest) {
-  const cookie = req.cookies.get('admin_session')?.value;
-  const authHeader = req.headers.get('authorization')?.replace(/^Bearer\s+/i, '');
-  const customToken = req.headers.get('x-admin-token');
-  const token = cookie || authHeader || customToken;
-
-  if (token) {
-    const verified = verifyAdminSessionToken(token);
-    if (verified) return verified;
-  }
-
-  // Header-based fallback for client contexts where iframe cookies are blocked
-  const headerEmail = req.headers.get('x-admin-email');
-  const headerRole = req.headers.get('x-admin-role');
-  if (headerEmail && headerRole && canManageSeo(headerRole)) {
-    return {
-      userId: 'client-verified',
-      email: headerEmail,
-      role: headerRole === 'admin' ? 'super_admin' : headerRole,
-      exp: Date.now() + 3600000,
-    };
-  }
-
-  return null;
-}
-
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
+    const auth = requireAdminAuth(req, canManageSeo);
+    if (auth.errorResponse) return auth.errorResponse;
+
     const settings = await getSeoSettings();
     return NextResponse.json({ settings, success: true });
   } catch (error: any) {
@@ -44,13 +21,8 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   try {
-    const session = getAdminSession(req);
-    if (!session || !canManageSeo(session.role)) {
-      return NextResponse.json(
-        { error: 'Unauthorized. Only administrators can modify SEO and tracking settings.', success: false },
-        { status: 403 }
-      );
-    }
+    const auth = requireAdminAuth(req, canManageSeo);
+    if (auth.errorResponse) return auth.errorResponse;
 
     const body = await req.json();
     const updated = await updateSeoSettings(body as Partial<SeoSettings>);

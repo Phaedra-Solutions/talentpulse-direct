@@ -34,7 +34,7 @@ export default function AdminSeoPage() {
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    if (localStorage.getItem('talentpulse_signed_out') === 'true' && !hrUser) {
+    if (!hrUser) {
       router.push('/admin/login?redirect=/admin/seo');
     } else if (hrUser && !canManageSeo(hrUser.role)) {
       router.push('/admin/dashboard?unauthorized=seo');

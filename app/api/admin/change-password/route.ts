@@ -35,7 +35,12 @@ export async function POST(req: NextRequest) {
 
     const supabase = getSupabaseServerClient();
     if (!supabase || !isServerSupabaseConfigured) {
-      // Fallback mode
+      // In fallback mode, verify current password matches the known demo password
+      const isKnownPassword = verifyAdminPassword(current_password.trim(), DEFAULT_ADMIN_SALT, DEFAULT_ADMIN_HASH) || current_password.trim() === 'lahore123$';
+      if (!isKnownPassword) {
+        return NextResponse.json({ error: 'Current password is incorrect. Please re-check your password.' }, { status: 401 });
+      }
+
       return NextResponse.json({
         success: true,
         message: 'Password successfully updated (fallback mode).',

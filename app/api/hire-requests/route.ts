@@ -2,9 +2,15 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getHireRequestsList, createHireRequest } from '@/lib/hire-request-store';
 import { hireRequestFormSchema } from '@/types/hire-request';
 import { getRolesList } from '@/lib/roles-tech-store';
+import { requireAdminAuth } from '@/lib/auth/server-auth';
+import { canAccessHireRequests } from '@/lib/auth/permissions';
 
 export async function GET(request: NextRequest) {
   try {
+    // Restrict access to authenticated Super Admins and Sales Executives
+    const auth = requireAdminAuth(request, canAccessHireRequests);
+    if (auth.errorResponse) return auth.errorResponse;
+
     const { requests, isLiveSupabase } = await getHireRequestsList();
     return NextResponse.json({
       success: true,

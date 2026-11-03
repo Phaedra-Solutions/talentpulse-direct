@@ -1,15 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseServerClient, isServerSupabaseConfigured } from '@/lib/supabase/server';
 import { Candidate } from '@/types/candidate';
-import { verifyAdminSessionToken } from '@/lib/auth/admin-password';
-
-function getAdminSession(req: NextRequest) {
-  const cookie = req.cookies.get('admin_session')?.value;
-  const authHeader = req.headers.get('authorization')?.replace(/^Bearer\s+/i, '');
-  const token = cookie || authHeader;
-  if (!token) return null;
-  return verifyAdminSessionToken(token);
-}
+import { requireAdminAuth } from '@/lib/auth/server-auth';
+import { canAccessCandidatePipeline } from '@/lib/auth/permissions';
 
 function fromDbCandidate(c: any): Candidate {
   let role = c.primary_role;
@@ -35,19 +28,11 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const auth = requireAdminAuth(req, canAccessCandidatePipeline);
+    if (auth.errorResponse) return auth.errorResponse;
+
     const { id } = await params;
     const updates = await req.json();
-
-    // Pipeline stage and internal notes modifications require authenticated admin
-    if (updates.pipeline_stage !== undefined || updates.internal_notes !== undefined) {
-      const session = getAdminSession(req);
-      if (isServerSupabaseConfigured && !session) {
-        return NextResponse.json(
-          { error: 'Unauthorized: Admin authentication session required to update candidate pipeline stage or internal notes.' },
-          { status: 401 }
-        );
-      }
-    }
 
     const supabase = getSupabaseServerClient();
     if (supabase && isServerSupabaseConfigured) {

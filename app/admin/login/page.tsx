@@ -22,12 +22,19 @@ import {
 
 export default function AdminLoginPage() {
   const router = useRouter();
-  const [email, setEmail] = useState<string>(AUTHORIZED_ADMIN_EMAIL);
-  const [password, setPassword] = useState('lahore123$');
+  const [email, setEmail] = useState<string>('');
+  const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('unauthorized') === 'true') {
+      return 'Access Restricted: You must authenticate with an authorized administrator account to access that page.';
+    }
+    return null;
+  });
 
-  // If already authenticated and not explicitly signed out, direct to dashboard
+  // If already authenticated, redirect to requested destination or dashboard
   React.useEffect(() => {
     const user = getCurrentHrUser();
     if (user && user.email) {

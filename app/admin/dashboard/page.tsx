@@ -20,8 +20,8 @@ import {
   useCurrentHrUser,
   signOutHrRecruiter, 
   isEmailAuthorizedForHr, 
-  HrUser,
   RecruiterRole,
+  canAccessCandidatePipeline,
   canAccessHireRequests,
   canManageRolesAndTech,
   canManageAdminUsers,
@@ -63,7 +63,7 @@ import {
 export default function AdminDashboardPage() {
   const router = useRouter();
   const hrUser = useCurrentHrUser();
-  const isAuthorized = Boolean(hrUser && hrUser.email && isEmailAuthorizedForHr(hrUser.email));
+  const isAuthorized = Boolean(hrUser && hrUser.email && canAccessCandidatePipeline(hrUser.role));
   const [rawCandidates, setRawCandidates] = useState<Candidate[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isLiveSupabase, setIsLiveSupabase] = useState(false);
@@ -107,11 +107,13 @@ export default function AdminDashboardPage() {
     updateHrUserSession({ role: newRole });
   };
 
-  // 1. Strict Auth Verification Gate: Redirect if explicitly logged out or must change password
+  // 1. Strict Auth Verification Gate: Redirect if unauthenticated or must change password
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    if (localStorage.getItem('talentpulse_signed_out') === 'true' && !hrUser) {
-      router.replace('/admin/login');
+    if (!hrUser) {
+      router.replace('/admin/login?redirect=/admin/dashboard');
+    } else if (!canAccessCandidatePipeline(hrUser.role)) {
+      router.replace('/admin/login?unauthorized=true');
     } else if (hrUser?.must_change_password) {
       router.replace(`/admin/change-password?email=${encodeURIComponent(hrUser.email)}&first_login=true`);
     }
