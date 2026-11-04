@@ -71,6 +71,17 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 - **Animations**: Import from `motion/react`.
 - **Forms & Validation**: `react-hook-form` + `zod`.
 
+### Forms, Consent & Regulatory Compliance
+When introducing or modifying candidate, client, or user-facing forms:
+- **Affirmative Dual Consent**: Forms collecting personal data or service inquiries (e.g., `/apply`, `/hire`) **MUST** require distinct, unbundled, non-pre-ticked checkboxes for both the **Terms of Use** (`/terms`) and the **Privacy Policy** (`/privacy`), complying with EU/UK GDPR (Art. 7 & Recital 32), California CCPA/CPRA, and Canadian PIPEDA.
+- **PII & Data Minimization**: Only collect data strictly required for talent matching or enterprise hiring. Review `docs/PRIVACY_POLICY.md` for compliant data categories.
+- **Access Control & Route Protection**: Any new routes, actions, or API endpoints handling candidate resumes, client contracts, or administrative actions **MUST** enforce the role clearance tier specified in `docs/PERMISSIONS_MATRIX.md` via `verifyAdminToken()`, returning `401 Unauthorized` or `403 Forbidden` for unauthenticated requests.
+- **System Documentation**: Refer to the governance documentation suite in `/docs`:
+  - [`docs/FEATURES.md`](docs/FEATURES.md) — Feature architecture & system specifications.
+  - [`docs/PERMISSIONS_MATRIX.md`](docs/PERMISSIONS_MATRIX.md) — 5-tier RBAC clearance and endpoint rules.
+  - [`docs/PRIVACY_POLICY.md`](docs/PRIVACY_POLICY.md) — GDPR, CCPA/CPRA & PIPEDA regulatory standards.
+  - [`docs/TERMS_OF_USE.md`](docs/TERMS_OF_USE.md) — Commercial agreement, trial terms & IP assignment.
+
 ### Code Quality & Validation
 Before submitting any changes, make sure your code passes both linting and production build checks:
 ```bash

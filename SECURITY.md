@@ -51,12 +51,25 @@ When a report is received, the TalentPulse maintainers follow these steps:
 
 ---
 
+## Data Protection & Privacy Rights
+
+TalentPulse adheres to strict global data protection standards (GDPR, CCPA/CPRA, and PIPEDA). For full specifications on data minimization, processing grounds, and retention cycles, refer to [`docs/PRIVACY_POLICY.md`](docs/PRIVACY_POLICY.md).
+
+### Data Subject Requests (DSR) & PII Protection
+- **DSR Requests**: Candidates or clients exercising rights of access, rectification, portability, or erasure ("Right to Be Forgotten") may submit requests directly to **`privacy@talentpulse.dev`** or **`legal@talentpulse.dev`**. All verified DSRs are fulfilled within statutory deadlines (30 days GDPR/PIPEDA, 45 days CCPA).
+- **Candidate Anonymity & PII Redaction**: Unauthenticated/anonymous traffic is prohibited from accessing full candidate contact information (phone numbers, full addresses, un-redacted contact details). Public candidate views redact PII, displaying only verified technical credentials, role, timezone, and portfolio work.
+- **Access Control & Permissions**: All administrative actions, hiring pipelines, and candidate reviews are strictly governed by the 5-tier role-based access control (RBAC) model defined in [`docs/PERMISSIONS_MATRIX.md`](docs/PERMISSIONS_MATRIX.md).
+
+---
+
 ## Security Best Practices for Self-Hosting
 
 When deploying TalentPulse to production:
-- **Environment Secrets:** Never commit your `.env` file. Keep `SUPABASE_SECRET_KEY` and `GEMINI_API_KEY` strictly private in server-side secret managers.
+- **Environment Secrets:** Never commit your `.env` or `.env.local` files. Keep `SUPABASE_SECRET_KEY` and `GEMINI_API_KEY` strictly private in server-side secret managers.
+- **Cryptographic Authentication:** Admin and staff authentication utilizes PBKDF2 SHA-512 with 100,000 iterations and per-user cryptographic salts. Passwords are never stored in plaintext.
 - **Row-Level Security (RLS):** Ensure PostgreSQL RLS policies in `schema.sql` are active for all tables.
-- **HTTPS:** Always enforce TLS 1.3/HTTPS in production load balancers and reverse proxies.
-- **Admin Password Rotation:** Newly provisioned administrators are required to change their temporary passwords on first login. Ensure strong password complexity standards.
+- **HTTPS & Transport Security:** Always enforce TLS 1.3 / HTTPS in production load balancers and reverse proxies. Set `Strict-Transport-Security` headers.
+- **Admin Password Rotation:** Newly provisioned administrators are required to change their temporary passwords on first login. Ensure strong password complexity standards (minimum 8 characters with alphanumeric and special characters).
+- **Dual Affirmative Consent:** Verify that candidate application and enterprise hire flows retain explicit consent audit trails for Terms of Use and Privacy Policy.
 
 Thank you for helping us keep TalentPulse and our community safe!

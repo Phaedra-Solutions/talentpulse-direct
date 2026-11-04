@@ -144,6 +144,9 @@ export async function createHireRequest(
     project_scope: values.project_scope || '',
     status: 'new',
     offline_notes: 'New client request submitted via online portal. Pending offline review and contact.',
+    terms_accepted: values.terms_accepted,
+    privacy_accepted: values.privacy_accepted,
+    consent_timestamp: new Date().toISOString(),
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   };
@@ -152,7 +155,15 @@ export async function createHireRequest(
   const supabase = getSupabaseClient();
   if (supabase) {
     try {
-      await supabase.from('hire_requests').insert([newRequest]);
+      const { error } = await supabase.from('hire_requests').insert([newRequest]);
+      // If table lacks new legal consent columns before migration is executed, retry safely
+      if (error && (error.message?.includes('terms_accepted') || error.message?.includes('privacy_accepted') || error.message?.includes('consent_timestamp'))) {
+        const fallbackRequest = { ...newRequest };
+        delete fallbackRequest.terms_accepted;
+        delete fallbackRequest.privacy_accepted;
+        delete fallbackRequest.consent_timestamp;
+        await supabase.from('hire_requests').insert([fallbackRequest]);
+      }
     } catch (err) {
       console.warn('Supabase insert failed, saving locally:', err);
     }

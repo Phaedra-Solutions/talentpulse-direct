@@ -116,6 +116,7 @@ export async function POST(req: NextRequest) {
     const candidateData = {
       ...validated,
       overlap_hours_per_day: Number(validated.overlap_hours_per_day),
+      consent_timestamp: new Date().toISOString(),
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
       pipeline_stage: 'new',
@@ -125,11 +126,30 @@ export async function POST(req: NextRequest) {
     const supabase = getSupabaseServerClient();
     if (supabase && isServerSupabaseConfigured) {
       const dbPayload = toDbCandidateData(candidateData);
-      const { data, error } = await supabase
+      let { data, error } = await supabase
         .from('candidates')
         .insert([dbPayload])
         .select()
         .single();
+
+      // Graceful fallback if database has not yet run the legal consent migration
+      if (error && (error.message?.includes('terms_accepted') || error.message?.includes('privacy_accepted') || error.message?.includes('consent_timestamp'))) {
+        const fallbackPayload = { ...dbPayload };
+        delete fallbackPayload.terms_accepted;
+        delete fallbackPayload.privacy_accepted;
+        delete fallbackPayload.consent_timestamp;
+
+        const retry = await supabase
+          .from('candidates')
+          .insert([fallbackPayload])
+          .select()
+          .single();
+
+        if (!retry.error) {
+          data = retry.data;
+          error = null;
+        }
+      }
 
       if (error) {
         return NextResponse.json({ error: error.message }, { status: 400 });

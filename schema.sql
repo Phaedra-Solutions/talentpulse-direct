@@ -96,13 +96,21 @@ CREATE TABLE IF NOT EXISTS public.candidates (
     
     -- Internal HR Pipeline Tracking
     pipeline_stage pipeline_stage_enum NOT NULL DEFAULT 'new',
-    internal_notes TEXT DEFAULT ''
+    internal_notes TEXT DEFAULT '',
+
+    -- Dual Legal Consent & Regulatory Audit Trails (GDPR / CCPA / PIPEDA)
+    terms_accepted BOOLEAN NOT NULL DEFAULT true,
+    privacy_accepted BOOLEAN NOT NULL DEFAULT true,
+    consent_timestamp TIMESTAMPTZ DEFAULT timezone('utc'::text, now())
 );
 
 -- Safe migration columns in case table already exists
 ALTER TABLE public.candidates ADD COLUMN IF NOT EXISTS phone_number TEXT NOT NULL DEFAULT '';
 ALTER TABLE public.candidates ADD COLUMN IF NOT EXISTS resume_url TEXT;
 ALTER TABLE public.candidates ADD COLUMN IF NOT EXISTS resume_filename TEXT;
+ALTER TABLE public.candidates ADD COLUMN IF NOT EXISTS terms_accepted BOOLEAN NOT NULL DEFAULT true;
+ALTER TABLE public.candidates ADD COLUMN IF NOT EXISTS privacy_accepted BOOLEAN NOT NULL DEFAULT true;
+ALTER TABLE public.candidates ADD COLUMN IF NOT EXISTS consent_timestamp TIMESTAMPTZ DEFAULT timezone('utc'::text, now());
 
 -- 4. PERFORMANCE & SECURITY INDEXES
 CREATE INDEX IF NOT EXISTS idx_candidates_user_id ON public.candidates(user_id);
@@ -112,6 +120,7 @@ CREATE INDEX IF NOT EXISTS idx_candidates_pipeline_stage ON public.candidates(pi
 CREATE INDEX IF NOT EXISTS idx_candidates_email ON public.candidates(email);
 CREATE INDEX IF NOT EXISTS idx_candidates_phone_number ON public.candidates(phone_number);
 CREATE INDEX IF NOT EXISTS idx_candidates_created_at ON public.candidates(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_candidates_consent_timestamp ON public.candidates(consent_timestamp);
 CREATE INDEX IF NOT EXISTS idx_candidates_tech_stack ON public.candidates USING GIN (tech_stack);
 CREATE INDEX IF NOT EXISTS idx_candidates_target_timezones ON public.candidates USING GIN (target_timezones);
 
@@ -287,12 +296,20 @@ CREATE TABLE IF NOT EXISTS public.hire_requests (
     project_scope TEXT DEFAULT '',
     status TEXT NOT NULL DEFAULT 'new',
     offline_notes TEXT DEFAULT '',
+    terms_accepted BOOLEAN NOT NULL DEFAULT true,
+    privacy_accepted BOOLEAN NOT NULL DEFAULT true,
+    consent_timestamp TIMESTAMPTZ DEFAULT timezone('utc'::text, now()),
     created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
 );
 
+ALTER TABLE public.hire_requests ADD COLUMN IF NOT EXISTS terms_accepted BOOLEAN NOT NULL DEFAULT true;
+ALTER TABLE public.hire_requests ADD COLUMN IF NOT EXISTS privacy_accepted BOOLEAN NOT NULL DEFAULT true;
+ALTER TABLE public.hire_requests ADD COLUMN IF NOT EXISTS consent_timestamp TIMESTAMPTZ DEFAULT timezone('utc'::text, now());
+
 CREATE INDEX IF NOT EXISTS idx_hire_requests_status ON public.hire_requests(status);
 CREATE INDEX IF NOT EXISTS idx_hire_requests_created_at ON public.hire_requests(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_hire_requests_consent_timestamp ON public.hire_requests(consent_timestamp);
 CREATE INDEX IF NOT EXISTS idx_hire_requests_client_email ON public.hire_requests(client_email);
 CREATE INDEX IF NOT EXISTS idx_hire_requests_business_name ON public.hire_requests(business_name);
 

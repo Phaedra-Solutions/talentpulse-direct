@@ -126,22 +126,22 @@ export const DEFAULT_SEO_SETTINGS: SeoSettings = {
   robots_rules: [
     {
       userAgent: '*',
-      allow: ['/', '/candidates', '/candidates/*', '/hire-request', '/llms.txt'],
+      allow: ['/', '/candidates', '/candidates/*', '/hire', '/hire-request', '/privacy', '/terms', '/apply', '/llms.txt'],
       disallow: ['/admin', '/admin/*', '/api/*', '/_next/*']
     },
     {
       userAgent: 'GPTBot',
-      allow: ['/', '/llms.txt'],
+      allow: ['/', '/privacy', '/terms', '/llms.txt'],
       disallow: ['/admin/', '/api/']
     },
     {
       userAgent: 'PerplexityBot',
-      allow: ['/', '/llms.txt'],
+      allow: ['/', '/privacy', '/terms', '/llms.txt'],
       disallow: ['/admin/', '/api/']
     },
     {
       userAgent: 'ClaudeBot',
-      allow: ['/', '/llms.txt'],
+      allow: ['/', '/privacy', '/terms', '/llms.txt'],
       disallow: ['/admin/', '/api/']
     }
   ]
@@ -170,6 +170,17 @@ export const DEFAULT_PAGE_OVERRIDES: Record<string, PageSeoOverride> = {
     h1_heading: 'Vetted Engineers & Technical Leaders',
     schema_type: 'CollectionPage'
   },
+  '/hire': {
+    path: '/hire',
+    title: 'Hire Top 1% Engineers in 48 Hours | TalentPulse',
+    description: 'Submit your engineering requirements. TalentPulse matches verified, pre-screened technical talent with 4+ hours daily US overlap and a 2-week risk-free trial.',
+    keywords: 'hire developers, contract engineers, hire AI engineers, software developers',
+    canonical_url: 'https://talentpulse.dev/hire',
+    no_index: false,
+    no_follow: false,
+    h1_heading: 'Request Pre-Vetted Contract Engineers in 48 Hours',
+    schema_type: 'ContactPage'
+  },
   '/hire-request': {
     path: '/hire-request',
     title: 'Hire Top Engineers in 48 Hours | TalentPulse Request',
@@ -180,6 +191,39 @@ export const DEFAULT_PAGE_OVERRIDES: Record<string, PageSeoOverride> = {
     no_follow: false,
     h1_heading: 'Request Your Engineering Match',
     schema_type: 'ContactPage'
+  },
+  '/apply': {
+    path: '/apply',
+    title: 'Join the TalentPulse Engineer Network | Apply as Talent',
+    description: 'Apply to join our vetted talent pool. Work directly with top global technology companies with contractual flexibility and guaranteed hourly rates.',
+    keywords: 'developer jobs, remote engineering jobs, join talent pool, apply developer',
+    canonical_url: 'https://talentpulse.dev/apply',
+    no_index: false,
+    no_follow: false,
+    h1_heading: 'Join the Top 1% Vetted Engineering Roster',
+    schema_type: 'ContactPage'
+  },
+  '/privacy': {
+    path: '/privacy',
+    title: 'Global Privacy Policy | TalentPulse Direct',
+    description: 'Learn how TalentPulse protects candidate and client data. Fully compliant with EU/UK GDPR, California CCPA/CPRA, and Canadian PIPEDA regulations.',
+    keywords: 'privacy policy, GDPR compliance, CCPA, CPRA, PIPEDA, candidate data privacy',
+    canonical_url: 'https://talentpulse.dev/privacy',
+    no_index: false,
+    no_follow: false,
+    h1_heading: 'TalentPulse Direct Global Privacy Policy',
+    schema_type: 'Article'
+  },
+  '/terms': {
+    path: '/terms',
+    title: 'Commercial Terms of Use | TalentPulse Direct',
+    description: 'Enterprise terms governing contractual staffing, 4+ hour timezone overlap, 2-week risk-free trial, non-circumvention, and 100% client intellectual property ownership.',
+    keywords: 'terms of use, terms of service, commercial contract, contractual placement, candidate agreement',
+    canonical_url: 'https://talentpulse.dev/terms',
+    no_index: false,
+    no_follow: false,
+    h1_heading: 'TalentPulse Direct Commercial Terms of Use',
+    schema_type: 'Article'
   },
   '/candidates/[id]': {
     path: '/candidates/[id]',

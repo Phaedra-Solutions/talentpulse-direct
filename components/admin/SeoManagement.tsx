@@ -784,6 +784,39 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
               <p className="text-xs font-mono text-[#111113]/60">
                 Customize titles, meta descriptions, canonical URLs, and indexing robots directives for individual routes.
               </p>
+              <div className="flex items-center gap-2 mt-2 font-mono text-xs">
+                <span className="text-[10px] text-[#111113]/60 uppercase font-bold">Quick Presets:</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const existing = pageOverrides.find(p => p.path === '/privacy');
+                    if (existing) {
+                      setEditingOverride(existing);
+                    } else {
+                      setEditingOverride(DEFAULT_PAGE_OVERRIDES['/privacy']);
+                    }
+                  }}
+                  className="px-2 py-0.5 border border-[#111113] bg-[#F8F7F4] hover:bg-[#FF4D00] hover:text-white transition-colors text-[11px] font-bold"
+                  title="Configure SEO for /privacy"
+                >
+                  /privacy (Privacy Policy)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const existing = pageOverrides.find(p => p.path === '/terms');
+                    if (existing) {
+                      setEditingOverride(existing);
+                    } else {
+                      setEditingOverride(DEFAULT_PAGE_OVERRIDES['/terms']);
+                    }
+                  }}
+                  className="px-2 py-0.5 border border-[#111113] bg-[#F8F7F4] hover:bg-[#FF4D00] hover:text-white transition-colors text-[11px] font-bold"
+                  title="Configure SEO for /terms"
+                >
+                  /terms (Terms of Use)
+                </button>
+              </div>
             </div>
             <button
               onClick={() => {

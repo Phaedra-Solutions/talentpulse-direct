@@ -28,6 +28,9 @@ export interface HireRequest {
   project_scope?: string;
   status: HireRequestStatus;
   offline_notes?: string;
+  terms_accepted?: boolean;
+  privacy_accepted?: boolean;
+  consent_timestamp?: string;
   created_at: string;
   updated_at: string;
 }
@@ -42,6 +45,12 @@ export const hireRequestFormSchema = z.object({
   country: z.string().min(2, 'Please select or enter your business country/location'),
   business_name: z.string().min(2, 'Business or organization name is required'),
   project_scope: z.string().max(3000).optional(),
+  terms_accepted: z.boolean().refine(val => val === true, {
+    message: 'You must acknowledge and accept the Commercial Terms of Use to proceed.',
+  }),
+  privacy_accepted: z.boolean().refine(val => val === true, {
+    message: 'You must acknowledge and accept the Global Privacy Policy to proceed.',
+  }),
 });
 
 export type HireRequestFormValues = z.infer<typeof hireRequestFormSchema>;

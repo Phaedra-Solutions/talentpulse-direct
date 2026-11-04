@@ -57,6 +57,9 @@ export interface Candidate {
   tech_stack: string[];
   pipeline_stage: PipelineStage;
   internal_notes: string;
+  terms_accepted?: boolean;
+  privacy_accepted?: boolean;
+  consent_timestamp?: string;
 }
 
 // Predefined Global Timezones with UTC Offsets
@@ -101,6 +104,12 @@ export const candidateApplicationSchema = z.object({
   primary_role: z.string().min(1, 'Please select your primary engineering specialization'),
   contractual_agreement_accepted: z.boolean().refine(val => val === true, {
     message: 'You must acknowledge and accept contractual & project-based terms only.',
+  }),
+  terms_accepted: z.boolean().refine(val => val === true, {
+    message: 'You must acknowledge and accept the Commercial Terms of Use to proceed.',
+  }),
+  privacy_accepted: z.boolean().refine(val => val === true, {
+    message: 'You must acknowledge and accept the Global Privacy Policy to proceed.',
   }),
   work_modes: z.array(z.enum(['remote', 'hybrid', 'onsite'] as const)).min(1, 'Select at least one work mode preference'),
 

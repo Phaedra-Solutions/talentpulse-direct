@@ -16,7 +16,7 @@
   Tailored for specialized engineering pipelines, Forward Deployed Engineers (FDEs), AI/ML researchers, and technical talent.
 </p>
 
-[Explore Features](#key-features) • [Quickstart Guide](#quickstart) • [Database Setup](#database-schema--supabase-setup) • [Contributing](CONTRIBUTING.md) • [Security](SECURITY.md)
+[System Features](docs/FEATURES.md) • [Permissions Matrix](docs/PERMISSIONS_MATRIX.md) • [Privacy Policy](docs/PRIVACY_POLICY.md) • [Terms of Use](docs/TERMS_OF_USE.md) • [Contributing](CONTRIBUTING.md) • [Security](SECURITY.md)
 
 </div>
 
@@ -35,17 +35,33 @@ Traditional applicant tracking software is clunky, hides critical technical data
 
 ---
 
+## 📚 System Documentation & Governance Suite
+
+TalentPulse Direct maintains comprehensive architecture, security, and legal documentation in the [`/docs`](docs/) directory:
+
+| Document | Purpose | Key Standards Covered |
+| :--- | :--- | :--- |
+| 📖 **[System Feature Catalog](docs/FEATURES.md)** | Complete capability & architectural catalog | All 10 functional domains, Next.js 15 App Router, Gemini AI evaluations |
+| 🛡️ **[Permissions Matrix](docs/PERMISSIONS_MATRIX.md)** | Role-Based Access Control (RBAC) standard | Anonymous, Candidate, Sales Executive, HR Executive, and Super Admin clearance |
+| 🌐 **[Global Privacy Policy](docs/PRIVACY_POLICY.md)** | Regulatory privacy standard (`/privacy`) | GDPR (EU/UK), CCPA/CPRA (California), PIPEDA (Canada), Server-Side PII redaction |
+| ⚖️ **[Commercial Terms of Use](docs/TERMS_OF_USE.md)** | Commercial service agreement (`/terms`) | Contractual exclusivity, 4+ hr overlap guarantee, 2-week trial, 12-mo non-circumvention |
+
+---
+
 ## ✨ Key Features
 
 | Capability | Description |
 | :--- | :--- |
-| ⚡ **Public Application Portal** | High-throughput intake form (`/apply`) with real-time validation, role matching, and resume attachment. |
+| ⚡ **Public Application Portal** | High-throughput intake form (`/apply`) with real-time validation, dynamic role matching, and dual affirmative legal consent. |
+| 💼 **Client Hire Portal** | Enterprise staffing intake form (`/hire`) with project scoping, budget bands, and dual terms/privacy consent. |
 | 🔄 **Candidate Self-Service** | OTP / Magic-link candidate portal (`/candidate/update`) for real-time profile and availability adjustments. |
-| 📊 **Recruiter Command Center** | Live Kanban / list pipeline (`/admin/dashboard`) with multi-stage candidate lifecycle tracking and search. |
+| 📊 **Recruiter Command Center** | Live Kanban / list pipeline (`/admin/dashboard`) with multi-stage candidate lifecycle tracking, filtering, and notes. |
+| 📥 **Bulk Excel Export** | Formatted `.xlsx` candidate export with dynamic column sizing, restricted to HR Executives and Super Admins. |
 | 🤖 **Gemini AI Screening** | Server-side AI evaluation providing structured technical scorecards and candidate summaries. |
-| 👥 **Admin Team Management** | Team provisioning (`/admin/users`) with role assignment (`Super Admin`, `Admin`, `Recruiter`) and active/inactive status switches. |
+| 👥 **Granular Admin RBAC** | Multi-tier clearance (`Super Admin`, `Sales Executive`, `HR Executive`) enforced via HMAC cryptographic session tokens. |
 | 🔑 **Invite Link Onboarding** | One-click copyable cryptographic invite links (`/admin/setup-password?invite=...`) and automated temporary credentials. |
-| 🛡️ **Mandatory First-Login Rotation** | Enforced password change on first login (`/admin/change-password`) secured with PBKDF2 (100,000 iterations). |
+| 🛡️ **Mandatory First-Login Rotation** | Enforced password change on first login (`/admin/change-password`) secured with salted PBKDF2 (100,000 iterations). |
+| 🌐 **SEO & Crawler Engine** | Complete management suite (`/admin/seo`) with GTM, GA4, social cards simulator, Schema.org JSON-LD, and robots directives. |
 | 🗄️ **Supabase Persistence** | Production PostgreSQL integration with Row-Level Security (RLS) and transparent failover handling. |
 
 ---

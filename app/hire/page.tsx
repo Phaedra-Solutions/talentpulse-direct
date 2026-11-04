@@ -60,6 +60,8 @@ function HireRequestContent() {
       country: 'United States',
       business_name: '',
       project_scope: '',
+      terms_accepted: false,
+      privacy_accepted: false,
     },
     mode: 'onTouched',
   });
@@ -593,6 +595,69 @@ function HireRequestContent() {
                 placeholder="Briefly describe what your team is building, desired tech stack, team size, duration, or specific timezone overlap needed..."
                 className="w-full font-mono text-xs p-3 border-2 border-[#111113] bg-[#F8F7F4] text-[#111113] placeholder:text-[#111113]/40 focus:outline-hidden focus:border-[#FF4D00]"
               ></textarea>
+            </div>
+
+            {/* Dual Legal Affirmative Consents */}
+            <div className="space-y-3 pt-2">
+              <div className="p-3.5 border-2 border-[#111113] bg-white">
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    {...register('terms_accepted')}
+                    className="mt-0.5 w-4 h-4 border-2 border-[#111113] accent-[#FF4D00] shrink-0"
+                  />
+                  <div className="font-mono text-xs text-[#111113]">
+                    <span>
+                      I have read, understood, and affirmatively accept the{' '}
+                      <Link
+                        href="/terms"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="font-bold underline text-[#FF4D00] hover:text-[#111113] inline-flex items-center gap-0.5"
+                      >
+                        Commercial Terms of Use
+                        <ExternalLink className="w-3 h-3 inline" />
+                      </Link>
+                      , including the 2-week risk-free trial, 4+ hours timezone working overlap, and 12-month non-circumvention terms.
+                    </span>
+                  </div>
+                </label>
+                {errors.terms_accepted && (
+                  <p className="font-mono text-xs font-bold text-[#FF4D00] mt-1.5 pl-7">
+                    {errors.terms_accepted.message}
+                  </p>
+                )}
+              </div>
+
+              <div className="p-3.5 border-2 border-[#111113] bg-white">
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    {...register('privacy_accepted')}
+                    className="mt-0.5 w-4 h-4 border-2 border-[#111113] accent-[#FF4D00] shrink-0"
+                  />
+                  <div className="font-mono text-xs text-[#111113]">
+                    <span>
+                      I acknowledge and affirmatively accept the{' '}
+                      <Link
+                        href="/privacy"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="font-bold underline text-[#FF4D00] hover:text-[#111113] inline-flex items-center gap-0.5"
+                      >
+                        Global Privacy Policy
+                        <ExternalLink className="w-3 h-3 inline" />
+                      </Link>
+                      , and consent to corporate contact processing and NDA-grade staffing data management.
+                    </span>
+                  </div>
+                </label>
+                {errors.privacy_accepted && (
+                  <p className="font-mono text-xs font-bold text-[#FF4D00] mt-1.5 pl-7">
+                    {errors.privacy_accepted.message}
+                  </p>
+                )}
+              </div>
             </div>
           </div>
 

@@ -355,9 +355,13 @@ export default function HomePage() {
             © 2024 / 2026
           </div>
 
-          <div className="flex items-center gap-6 text-[#111113]/80 uppercase tracking-widest text-[11px]">
+          <div className="flex flex-wrap items-center gap-4 sm:gap-6 text-[#111113]/80 uppercase tracking-widest text-[11px] font-mono">
             <Link href="/" className="hover:text-[#FF4D00] transition-colors">Overview</Link>
-            <Link href="/candidate/update" className="hover:text-[#FF4D00] transition-colors">Candidate Portal</Link>
+            <Link href="/hire" className="hover:text-[#FF4D00] transition-colors">Hire</Link>
+            <Link href="/apply" className="hover:text-[#FF4D00] transition-colors">Apply</Link>
+            <Link href="/candidate/update" className="hover:text-[#FF4D00] transition-colors">Portal</Link>
+            <Link href="/privacy" className="hover:text-[#FF4D00] transition-colors">Privacy</Link>
+            <Link href="/terms" className="hover:text-[#FF4D00] transition-colors">Terms</Link>
           </div>
 
           <div className="flex items-center gap-3 text-[#111113]">

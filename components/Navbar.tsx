@@ -32,6 +32,18 @@ export function Navbar() {
           </div>
 
           <div className="flex items-center gap-4 text-[10px]">
+            <Link
+              href="/privacy"
+              className="opacity-75 hover:opacity-100 hover:text-[#FF4D00] transition-colors uppercase font-mono tracking-wider hidden sm:inline"
+            >
+              Privacy
+            </Link>
+            <Link
+              href="/terms"
+              className="opacity-75 hover:opacity-100 hover:text-[#FF4D00] transition-colors uppercase font-mono tracking-wider hidden sm:inline"
+            >
+              Terms
+            </Link>
             <a
               href="https://www.phaedrasolutions.com"
               target="_blank"

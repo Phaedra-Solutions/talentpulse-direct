@@ -81,6 +81,8 @@ function ApplyFormContent() {
       resume_filename: '',
       primary_role: roleParam || 'ai-llm-engineer',
       contractual_agreement_accepted: false,
+      terms_accepted: false,
+      privacy_accepted: false,
       work_modes: ['remote'],
       home_timezone: 'UTC-05:00 (EST - US Eastern / New York)',
       target_timezones: ['USA', 'Europe'],
@@ -958,6 +960,69 @@ function ApplyFormContent() {
                       <div><strong className="text-[#111113]">Timezone:</strong> {formValues.home_timezone.split(' — ')[0]}</div>
                       <div><strong className="text-[#111113]">Overlap:</strong> {formValues.overlap_hours_per_day} hrs/day ({formValues.target_timezones?.join(', ')})</div>
                       <div><strong className="text-[#111113]">Status:</strong> {formValues.availability_status}</div>
+                    </div>
+                  </div>
+
+                  {/* Dual Legal Affirmative Consents */}
+                  <div className="space-y-3 pt-2">
+                    <div className="p-3.5 border-2 border-[#111113] bg-white">
+                      <label className="flex items-start gap-3 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          {...register('terms_accepted')}
+                          className="mt-0.5 w-4 h-4 border-2 border-[#111113] accent-[#FF4D00] shrink-0"
+                        />
+                        <div className="font-mono text-xs text-[#111113]">
+                          <span>
+                            I have read, understood, and affirmatively agree to the{' '}
+                            <Link
+                              href="/terms"
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="font-bold underline text-[#FF4D00] hover:text-[#111113] inline-flex items-center gap-0.5"
+                            >
+                              Commercial Terms of Use
+                              <ExternalLink className="w-3 h-3 inline" />
+                            </Link>
+                            , including contractual exclusivity, 4+ hours timezone working overlap, and truthfulness warranties.
+                          </span>
+                        </div>
+                      </label>
+                      {errors.terms_accepted && (
+                        <p className="font-mono text-xs font-bold text-[#FF4D00] mt-1.5 pl-7">
+                          {errors.terms_accepted.message}
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="p-3.5 border-2 border-[#111113] bg-white">
+                      <label className="flex items-start gap-3 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          {...register('privacy_accepted')}
+                          className="mt-0.5 w-4 h-4 border-2 border-[#111113] accent-[#FF4D00] shrink-0"
+                        />
+                        <div className="font-mono text-xs text-[#111113]">
+                          <span>
+                            I acknowledge and agree to the{' '}
+                            <Link
+                              href="/privacy"
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="font-bold underline text-[#FF4D00] hover:text-[#111113] inline-flex items-center gap-0.5"
+                            >
+                              Global Privacy Policy
+                              <ExternalLink className="w-3 h-3 inline" />
+                            </Link>
+                            , and consent to international data processing and profile evaluation under GDPR, CCPA/CPRA, and PIPEDA.
+                          </span>
+                        </div>
+                      </label>
+                      {errors.privacy_accepted && (
+                        <p className="font-mono text-xs font-bold text-[#FF4D00] mt-1.5 pl-7">
+                          {errors.privacy_accepted.message}
+                        </p>
+                      )}
                     </div>
                   </div>
                 </div>
