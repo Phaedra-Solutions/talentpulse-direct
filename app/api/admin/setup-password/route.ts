@@ -32,11 +32,10 @@ export async function POST(req: NextRequest) {
 
     const supabase = getSupabaseServerClient();
     if (!supabase || !isServerSupabaseConfigured) {
-      return NextResponse.json({
-        success: true,
-        message: 'Account initialized successfully (fallback mode).',
-        user: { email: normalizedEmail, name: 'Admin', role: payload.role },
-      });
+      return NextResponse.json(
+        { error: 'Database service unavailable. Supabase connection required to initialize credentials.' },
+        { status: 503 }
+      );
     }
 
     // Verify user exists in admin_users

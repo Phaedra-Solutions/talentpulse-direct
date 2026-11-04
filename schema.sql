@@ -256,7 +256,7 @@ USING (
     OR email = 'admin@talentpulse.com'
 );
 
--- Initial Master Seed for Single Admin: admin@talentpulse.com (Password: lahore123$)
+-- Initial Master Seed for Single Super Administrator: admin@talentpulse.com
 INSERT INTO public.admin_users (
     email,
     password_hash,

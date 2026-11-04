@@ -16,47 +16,11 @@ export async function GET(req: NextRequest) {
     if (auth.errorResponse) return auth.errorResponse;
 
     const supabase = getSupabaseServerClient();
-    const fallbackAdmins = [
-      {
-        id: 'admin-master',
-        email: DESIGNATED_ADMIN_EMAIL,
-        full_name: 'Super Administrator',
-        role: 'super_admin',
-        is_active: true,
-        last_login_at: new Date().toISOString(),
-        created_at: new Date(Date.now() - 30 * 86400000).toISOString(),
-        updated_at: new Date().toISOString(),
-        must_change_password: false,
-      },
-      {
-        id: 'sales-lead-01',
-        email: 'sales@talentpulse.com',
-        full_name: 'Marcus Vance (Sales Executive)',
-        role: 'sales_executive',
-        is_active: true,
-        last_login_at: new Date(Date.now() - 2 * 86400000).toISOString(),
-        created_at: new Date(Date.now() - 14 * 86400000).toISOString(),
-        updated_at: new Date().toISOString(),
-        must_change_password: false,
-      },
-      {
-        id: 'hr-lead-01',
-        email: 'hr@talentpulse.com',
-        full_name: 'Sofia Chen (HR Executive)',
-        role: 'hr_executive',
-        is_active: true,
-        last_login_at: new Date(Date.now() - 1 * 86400000).toISOString(),
-        created_at: new Date(Date.now() - 10 * 86400000).toISOString(),
-        updated_at: new Date().toISOString(),
-        must_change_password: false,
-      }
-    ];
-
     if (!supabase || !isServerSupabaseConfigured) {
-      return NextResponse.json({
-        users: fallbackAdmins,
-        source: 'fallback'
-      });
+      return NextResponse.json(
+        { users: [], error: 'Database service unavailable. Supabase connection required.' },
+        { status: 503 }
+      );
     }
 
     const { data, error } = await supabase
@@ -64,8 +28,8 @@ export async function GET(req: NextRequest) {
       .select('id, email, full_name, role, is_active, last_login_at, created_at, updated_at')
       .order('created_at', { ascending: true });
 
-    if (error || !data || data.length === 0) {
-      return NextResponse.json({ users: fallbackAdmins, source: 'fallback_db_error' });
+    if (error) {
+      return NextResponse.json({ users: [], error: error.message }, { status: 500 });
     }
 
     const sanitizedUsers = data.map((u: any) => {
@@ -198,7 +162,10 @@ export async function PATCH(req: NextRequest) {
 
     const supabase = getSupabaseServerClient();
     if (!supabase || !isServerSupabaseConfigured) {
-      return NextResponse.json({ success: true, source: 'fallback' });
+      return NextResponse.json(
+        { error: 'Database service unavailable. Supabase connection required.' },
+        { status: 503 }
+      );
     }
 
     // Fetch existing record
@@ -285,7 +252,10 @@ export async function DELETE(req: NextRequest) {
 
     const supabase = getSupabaseServerClient();
     if (!supabase || !isServerSupabaseConfigured) {
-      return NextResponse.json({ success: true, source: 'fallback' });
+      return NextResponse.json(
+        { error: 'Database service unavailable. Supabase connection required.' },
+        { status: 503 }
+      );
     }
 
     // Check user email to protect primary super admin

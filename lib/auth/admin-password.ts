@@ -17,15 +17,21 @@ export interface AdminUserRecord {
 // Primary initial super admin email
 export const DESIGNATED_ADMIN_EMAIL = 'admin@talentpulse.com';
 
-// Pre-seeded cryptographic hash for default admin password (lahore123$)
-export const DEFAULT_ADMIN_SALT = '4a8f9c2d1b7e5f3a0c6e8d2b4f1a9c3e';
-export const DEFAULT_ADMIN_HASH = '112a7db7ddf8ecb2f88b4c5b54f8433c46b80d7a0fd49ba94d0f57ce59a79f3dfc9edc2350bf34548827105435888425c81d181f10844989269ca89583fa72dc';
-
-// Consistent signature secret to prevent signature mismatches across server workers
-const STATIC_SECRET_FALLBACK = 'tp_prod_auth_hmac_signing_key_4a8f9c2d1b7e5f3a0c6e8d2b';
+// Dynamic ephemeral runtime secret (generated dynamically in-memory if env variable is unset)
+// Never stored as static constant in code; zero static keys
+let runtimeSecret: string | null = null;
 
 export function getSigningSecret(): string {
-  return process.env.JWT_SECRET || process.env.SUPABASE_SECRET_KEY || process.env.APP_SECRET || STATIC_SECRET_FALLBACK;
+  const envSecret = process.env.JWT_SECRET || process.env.SUPABASE_SECRET_KEY || process.env.APP_SECRET;
+  if (envSecret && envSecret.trim().length > 0) {
+    return envSecret.trim();
+  }
+
+  // Cryptographically random in-memory secret generated per server instance
+  if (!runtimeSecret) {
+    runtimeSecret = crypto.randomBytes(32).toString('hex');
+  }
+  return runtimeSecret;
 }
 
 /**

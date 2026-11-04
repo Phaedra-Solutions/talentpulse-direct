@@ -1,9 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseServerClient, isServerSupabaseConfigured } from '@/lib/supabase/server';
 import { 
-  DESIGNATED_ADMIN_EMAIL, 
-  DEFAULT_ADMIN_SALT, 
-  DEFAULT_ADMIN_HASH, 
   generateSalt, 
   hashAdminPassword, 
   verifyAdminPassword 
@@ -35,17 +32,10 @@ export async function POST(req: NextRequest) {
 
     const supabase = getSupabaseServerClient();
     if (!supabase || !isServerSupabaseConfigured) {
-      // In fallback mode, verify current password matches the known demo password
-      const isKnownPassword = verifyAdminPassword(current_password.trim(), DEFAULT_ADMIN_SALT, DEFAULT_ADMIN_HASH) || current_password.trim() === 'lahore123$';
-      if (!isKnownPassword) {
-        return NextResponse.json({ error: 'Current password is incorrect. Please re-check your password.' }, { status: 401 });
-      }
-
-      return NextResponse.json({
-        success: true,
-        message: 'Password successfully updated (fallback mode).',
-        user: { email: normalizedEmail, name: 'Admin', role: 'super_admin' },
-      });
+      return NextResponse.json(
+        { error: 'Database service unavailable. Supabase connection required to update credentials.' }, 
+        { status: 503 }
+      );
     }
 
     // 1. Fetch user from admin_users
@@ -63,14 +53,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'This administrator account has been deactivated.' }, { status: 403 });
     }
 
-    // 2. Verify current password
-    let isCurrentValid = verifyAdminPassword(current_password.trim(), dbAdmin.salt, dbAdmin.password_hash);
-    if (!isCurrentValid && normalizedEmail === DESIGNATED_ADMIN_EMAIL.toLowerCase() && verifyAdminPassword(current_password.trim(), DEFAULT_ADMIN_SALT, DEFAULT_ADMIN_HASH)) {
-      isCurrentValid = true;
-    }
-
+    // 2. Strict verification of current password against stored hash & salt
+    const isCurrentValid = verifyAdminPassword(current_password.trim(), dbAdmin.salt, dbAdmin.password_hash);
     if (!isCurrentValid) {
-      return NextResponse.json({ error: 'Current password is incorrect. Please re-check your password or invite code.' }, { status: 401 });
+      return NextResponse.json({ error: 'Current password is incorrect. Please re-check your password.' }, { status: 401 });
     }
 
     // 3. Compute new hash and salt

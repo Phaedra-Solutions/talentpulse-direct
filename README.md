@@ -133,9 +133,9 @@ To seed realistic candidate profiles:
 supabase/seed.sql
 ```
 
-The default super admin account is pre-configured as:
+The initial super admin account is configured in `admin_users`:
 - **Email:** `admin@talentpulse.com`
-- **Password:** `lahore123$` *(System prompts for password rotation upon first login)*
+- **Authentication:** Authenticate using your provisioned administrator credentials configured in `public.admin_users`. Initial accounts require mandatory password rotation upon first login.
 
 ### 5. Start Development Server
 ```bash

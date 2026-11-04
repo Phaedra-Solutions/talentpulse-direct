@@ -49,7 +49,6 @@ USING (
 );
 
 -- 6. SEED INITIAL SUPER ADMIN: admin@talentpulse.com
--- Password: lahore123$
 -- Algorithm: PBKDF2 with SHA-512 (100,000 iterations)
 INSERT INTO public.admin_users (
     email,

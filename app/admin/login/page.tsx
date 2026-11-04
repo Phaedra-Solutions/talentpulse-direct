@@ -44,13 +44,13 @@ export default function AdminLoginPage() {
     }
   }, [router]);
 
-  const handleLogin = async (e?: React.FormEvent, customEmail?: string, customPass?: string) => {
-    if (e) e.preventDefault();
-    const loginEmail = (customEmail ?? email).trim();
-    const loginPass = (customPass ?? password).trim();
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const loginEmail = email.trim();
+    const loginPass = password.trim();
 
     if (!loginEmail) {
-      setErrorMessage('Please enter the designated administrator email.');
+      setErrorMessage('Please enter your administrator email address.');
       return;
     }
     if (!loginPass) {
@@ -96,11 +96,11 @@ export default function AdminLoginPage() {
               Admin Login
             </h1>
             <p className="font-mono text-xs text-[#111113]/70 uppercase tracking-wider">
-              Single Administrator Verification • Encrypted Database Security
+              Cryptographic PBKDF2 Verification • Database-Authenticated Access
             </p>
           </div>
 
-          {/* Login Card - Variation 1 Brutalist Box */}
+          {/* Login Card */}
           <div className="bg-white border-2 border-[#111113] p-6 sm:p-8 shadow-[6px_6px_0px_0px_#111113] space-y-6">
             {errorMessage && (
               <div className="p-3.5 border-2 border-rose-600 bg-rose-50 text-rose-900 text-xs font-mono flex items-start gap-2.5">
@@ -112,32 +112,36 @@ export default function AdminLoginPage() {
             <form onSubmit={handleLogin} className="space-y-4">
               <div>
                 <label className="block font-mono text-xs uppercase font-bold text-[#111113] mb-1">
-                  Designated Admin Email
+                  Administrator Email
                 </label>
                 <div className="relative">
                   <input
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    placeholder={AUTHORIZED_ADMIN_EMAIL}
+                    placeholder="name@talentpulse.com"
+                    autoComplete="email"
+                    required
                     className="w-full font-mono text-xs px-3.5 py-2.5 border-2 border-[#111113] bg-[#F8F7F4] text-[#111113] focus:outline-hidden"
                   />
                 </div>
                 <p className="font-mono text-[10px] text-[#111113]/60 mt-1 uppercase">
-                  Authorized administrative accounts provisioned in <code className="font-bold text-[#111113]">admin_users</code>
+                  Authorized administrative accounts registered in <code className="font-bold text-[#111113]">admin_users</code>
                 </p>
               </div>
 
               <div>
                 <label className="block font-mono text-xs uppercase font-bold text-[#111113] mb-1">
-                  Admin Master Password
+                  Password
                 </label>
                 <div className="relative">
                   <input
                     type="password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    placeholder="Enter encrypted password..."
+                    placeholder="Enter your personal password..."
+                    autoComplete="current-password"
+                    required
                     className="w-full font-mono text-xs px-3.5 py-2.5 border-2 border-[#111113] bg-[#F8F7F4] text-[#111113] focus:outline-hidden"
                   />
                 </div>
@@ -157,56 +161,6 @@ export default function AdminLoginPage() {
                 </button>
               </div>
             </form>
-
-            <div className="pt-4 border-t border-[#111113]/20 space-y-3 font-mono text-[11px]">
-              <div className="flex items-center justify-between font-bold text-[#111113] uppercase text-[10px]">
-                <div className="flex items-center gap-1.5">
-                  <ShieldCheck className="w-4 h-4 text-[#FF4D00]" />
-                  <span>Quick Test Accounts</span>
-                </div>
-              </div>
-              <div className="grid grid-cols-3 gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEmail('admin@talentpulse.com');
-                    setPassword('lahore123$');
-                    handleLogin(undefined, 'admin@talentpulse.com', 'lahore123$');
-                  }}
-                  className="p-2 border border-[#111113] bg-[#F8F7F4] hover:bg-[#111113] hover:text-white text-left transition text-[10px]"
-                >
-                  <div className="font-bold text-[#FF4D00]">Super Admin</div>
-                  <div className="text-[9px] opacity-75">1-Click Login</div>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEmail('sales@talentpulse.com');
-                    setPassword('lahore123$');
-                    handleLogin(undefined, 'sales@talentpulse.com', 'lahore123$');
-                  }}
-                  className="p-2 border border-[#111113] bg-[#F8F7F4] hover:bg-[#111113] hover:text-white text-left transition text-[10px]"
-                >
-                  <div className="font-bold text-indigo-700">Sales Exec</div>
-                  <div className="text-[9px] opacity-75">1-Click Login</div>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEmail('hr@talentpulse.com');
-                    setPassword('lahore123$');
-                    handleLogin(undefined, 'hr@talentpulse.com', 'lahore123$');
-                  }}
-                  className="p-2 border border-[#111113] bg-[#F8F7F4] hover:bg-[#111113] hover:text-white text-left transition text-[10px]"
-                >
-                  <div className="font-bold text-emerald-700">HR Exec</div>
-                  <div className="text-[9px] opacity-75">1-Click Login</div>
-                </button>
-              </div>
-              <p className="text-[#111113]/70 text-[10px] leading-relaxed pt-1">
-                Roles and permissions: Sales Executives can view/manage candidate pipeline &amp; hire requests (no data export); HR Executives can manage candidate pipeline, download native Excel (.xlsx) candidate exports, and manage Roles &amp; Technologies; Admins have full access.
-              </p>
-            </div>
           </div>
 
           <div className="text-center font-mono text-xs">
