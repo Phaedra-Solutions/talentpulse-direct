@@ -345,11 +345,11 @@ export default function CandidateUpdatePage() {
                 </div>
               )}
 
-              <div className="flex items-center gap-2 font-mono text-xs">
+              <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center gap-2 font-mono text-xs">
                 <button
                   type="button"
                   onClick={() => setOtpStep('input_email')}
-                  className="btn-brutalist py-3 px-4"
+                  className="btn-brutalist py-3 px-4 min-h-[44px] flex items-center justify-center"
                 >
                   Change Email
                 </button>
@@ -357,9 +357,9 @@ export default function CandidateUpdatePage() {
                   type="button"
                   onClick={handleVerifyOtp}
                   disabled={isVerifyingOtp}
-                  className="flex-1 btn-brutalist btn-brutalist-primary py-3 disabled:opacity-50"
+                  className="flex-1 btn-brutalist btn-brutalist-primary py-3 min-h-[44px] flex items-center justify-center gap-1.5 disabled:opacity-50"
                 >
-                  <ShieldCheck className="w-4 h-4" />
+                  <ShieldCheck className="w-4 h-4 shrink-0" />
                   <span>{isVerifyingOtp ? 'VERIFYING...' : 'VERIFY & UNLOCK AVAILABILITY'}</span>
                 </button>
               </div>
@@ -369,31 +369,31 @@ export default function CandidateUpdatePage() {
 
         {/* STEP 3: Authenticated Candidate Profile Edit Form */}
         {otpStep === 'authenticated' && candidate && (
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 sm:p-8 shadow-xl space-y-6 animate-in fade-in duration-200">
+          <div className="bg-white border-2 border-[#111113] p-4 sm:p-8 shadow-[6px_6px_0px_0px_#111113] space-y-6 animate-in fade-in duration-200">
             {/* Header info */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-slate-100 dark:border-slate-800 gap-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b-2 border-[#111113]/20 gap-3">
               <div>
-                <div className="flex items-center gap-2 mb-1">
-                  <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border ${ROLE_LABELS[candidate.primary_role]?.badgeClass}`}>
+                <div className="flex items-center gap-2 mb-1 flex-wrap font-mono text-xs">
+                  <span className={`text-[10px] font-bold px-2 py-0.5 uppercase tracking-wider border ${ROLE_LABELS[candidate.primary_role]?.badgeClass}`}>
                     {ROLE_LABELS[candidate.primary_role]?.label}
                   </span>
-                  <span className="text-xs text-slate-400 font-mono">
+                  <span className="text-xs text-[#111113]/60 font-mono">
                     ID: {candidate.id.slice(0, 8)}...
                   </span>
                 </div>
-                <h2 className="text-2xl font-black text-slate-900 dark:text-white">
+                <h2 className="text-2xl font-syne font-extrabold text-[#111113] break-words">
                   {candidate.full_name}
                 </h2>
-                <div className="flex items-center gap-3 text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                  <span className="font-mono">{candidate.email}</span>
+                <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-xs text-[#111113]/70 mt-0.5 font-mono">
+                  <span>{candidate.email}</span>
                   <span>•</span>
-                  <span className="font-mono">{candidate.phone_number}</span>
+                  <span>{candidate.phone_number}</span>
                 </div>
               </div>
 
-              <div className="text-right text-xs text-slate-500">
-                <span>Last Updated:</span>
-                <div className="font-semibold text-slate-800 dark:text-slate-200">
+              <div className="text-left sm:text-right text-xs font-mono text-[#111113]/70">
+                <span className="text-[10px] uppercase block">Last Updated:</span>
+                <div suppressHydrationWarning className="font-bold text-[#111113]">
                   {new Date(candidate.updated_at).toLocaleString()}
                 </div>
               </div>
@@ -401,16 +401,16 @@ export default function CandidateUpdatePage() {
 
             {/* Notification messages */}
             {saveSuccess && (
-              <div className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800 text-emerald-900 dark:text-emerald-200 text-xs flex items-center gap-2.5 animate-in fade-in">
+              <div className="p-4 border-2 border-emerald-700 bg-emerald-50 text-emerald-950 font-mono text-xs flex items-center gap-2.5 animate-in fade-in shadow-[2px_2px_0px_0px_#111113]">
                 <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
                 <span>
-                  <strong>Availability Profile Updated!</strong> Real-time timestamp committed to Supabase candidate record.
+                  <strong>Availability Profile Updated!</strong> Real-time timestamp committed to candidate record.
                 </span>
               </div>
             )}
 
             {saveError && (
-              <div className="p-4 rounded-2xl bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-800 text-rose-900 dark:text-rose-200 text-xs flex items-center gap-2.5">
+              <div className="p-4 border-2 border-rose-600 bg-rose-50 text-rose-950 font-mono text-xs flex items-center gap-2.5 shadow-[2px_2px_0px_0px_#111113]">
                 <AlertCircle className="w-5 h-5 text-rose-600 shrink-0" />
                 <span>{saveError}</span>
               </div>
@@ -538,7 +538,7 @@ export default function CandidateUpdatePage() {
               </div>
 
               {/* Submit Button */}
-              <div className="pt-4 border-t-2 border-[#111113] flex items-center justify-between">
+              <div className="pt-4 border-t-2 border-[#111113] flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
                 <span className="font-mono text-xs text-[#111113]/60 uppercase">
                   Target rates are managed offline by HR partner.
                 </span>
@@ -546,9 +546,9 @@ export default function CandidateUpdatePage() {
                 <button
                   type="submit"
                   disabled={isSaving}
-                  className="btn-brutalist btn-brutalist-primary text-xs py-2.5 px-6 disabled:opacity-50"
+                  className="btn-brutalist btn-brutalist-primary text-xs py-3 px-6 min-h-[44px] flex items-center justify-center gap-2 disabled:opacity-50"
                 >
-                  <Save className="w-4 h-4 text-[#FF4D00]" />
+                  <Save className="w-4 h-4 text-white shrink-0" />
                   <span>{isSaving ? 'SAVING UPDATES...' : 'SAVE UPDATED AVAILABILITY'}</span>
                 </button>
               </div>

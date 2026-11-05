@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useMemo, Suspense } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Navbar } from '@/components/Navbar';
 import { 
   HR_SESSION_KEY, 
@@ -19,20 +19,15 @@ import {
   Lock
 } from 'lucide-react';
 
-export default function AdminSetupPasswordPage() {
+function AdminSetupPasswordContent() {
   const router = useRouter();
-  const [inviteToken] = useState<string>(() => {
-    if (typeof window === 'undefined') return '';
-    const params = new URLSearchParams(window.location.search);
-    return params.get('invite') || '';
-  });
-  const [inviteInfo] = useState<{ email: string; role: string } | null>(() => {
-    if (typeof window === 'undefined') return null;
-    const params = new URLSearchParams(window.location.search);
-    const token = params.get('invite');
-    if (!token) return null;
+  const searchParams = useSearchParams();
+  const inviteToken = searchParams.get('invite') || '';
+
+  const inviteInfo = useMemo(() => {
+    if (!inviteToken) return null;
     try {
-      const [dataBase64] = token.split('.');
+      const [dataBase64] = inviteToken.split('.');
       if (dataBase64) {
         const jsonStr = atob(dataBase64.replace(/-/g, '+').replace(/_/g, '/'));
         const parsed = JSON.parse(jsonStr);
@@ -44,39 +39,35 @@ export default function AdminSetupPasswordPage() {
       // Ignored
     }
     return null;
-  });
+  }, [inviteToken]);
+
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPasswords, setShowPasswords] = useState(false);
   
   const [isLoading, setIsLoading] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(() => {
-    if (typeof window === 'undefined') return null;
-    const params = new URLSearchParams(window.location.search);
-    if (!params.get('invite')) {
-      return 'Invitation token is missing from the link URL.';
-    }
-    return null;
-  });
+  const [formError, setFormError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  const errorMessage = formError || (!inviteToken ? 'Invitation token is missing from the link URL.' : null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setErrorMessage(null);
+    setFormError(null);
     setSuccessMessage(null);
 
     if (!inviteToken) {
-      setErrorMessage('Invalid invitation token. Please check your invite URL.');
+      setFormError('Invalid invitation token. Please check your invite URL.');
       return;
     }
 
     if (newPassword.length < 8) {
-      setErrorMessage('Password must be at least 8 characters long.');
+      setFormError('Password must be at least 8 characters long.');
       return;
     }
 
     if (newPassword !== confirmPassword) {
-      setErrorMessage('Passwords do not match.');
+      setFormError('Passwords do not match.');
       return;
     }
 
@@ -95,7 +86,7 @@ export default function AdminSetupPasswordPage() {
       const data = await res.json();
 
       if (!res.ok || !data.success) {
-        setErrorMessage(data.error || 'Failed to setup administrator account.');
+        setFormError(data.error || 'Failed to setup administrator account.');
         setIsLoading(false);
         return;
       }
@@ -119,7 +110,7 @@ export default function AdminSetupPasswordPage() {
       }, 1500);
 
     } catch (err: any) {
-      setErrorMessage(err.message || 'Network error completing onboarding.');
+      setFormError(err.message || 'Network error completing onboarding.');
       setIsLoading(false);
     }
   };
@@ -227,5 +218,19 @@ export default function AdminSetupPasswordPage() {
         </div>
       </main>
     </div>
+  );
+}
+
+export default function AdminSetupPasswordPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-[#F8F7F4] flex flex-col items-center justify-center p-6 font-mono text-xs">
+          Verifying Invitation Link...
+        </div>
+      }
+    >
+      <AdminSetupPasswordContent />
+    </Suspense>
   );
 }

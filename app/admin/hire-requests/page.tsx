@@ -325,13 +325,13 @@ export default function AdminHireRequestsPage() {
             </p>
           </div>
 
-          <div className="flex items-center gap-2 flex-wrap font-mono text-xs">
+          <div className="flex items-center gap-2 overflow-x-auto pb-2 sm:pb-0 scrollbar-none max-w-full sm:flex-wrap font-mono text-xs">
             <Link
               href="/admin/dashboard"
-              className="btn-brutalist text-xs py-1.5 px-3 flex items-center gap-1.5"
+              className="btn-brutalist text-xs py-2 sm:py-1.5 px-3 flex items-center gap-1.5 shrink-0 min-h-[44px] sm:min-h-0"
               title="Candidates Pipeline"
             >
-              <Users className="w-3.5 h-3.5" />
+              <Users className="w-3.5 h-3.5 shrink-0" />
               <span>Candidates</span>
             </Link>
 
@@ -339,10 +339,10 @@ export default function AdminHireRequestsPage() {
             {canManageRolesAndTech(hrUser.role) && (
               <Link
                 href="/admin/roles"
-                className="btn-brutalist text-xs py-1.5 px-3 flex items-center gap-1.5"
+                className="btn-brutalist text-xs py-2 sm:py-1.5 px-3 flex items-center gap-1.5 shrink-0 min-h-[44px] sm:min-h-0"
                 title="Roles & Technologies Management"
               >
-                <Cpu className="w-3.5 h-3.5" />
+                <Cpu className="w-3.5 h-3.5 shrink-0" />
                 <span>Roles &amp; Tech</span>
               </Link>
             )}
@@ -351,10 +351,10 @@ export default function AdminHireRequestsPage() {
             {canManageAdminUsers(hrUser.role) && (
               <Link
                 href="/admin/users"
-                className="btn-brutalist text-xs py-1.5 px-3 flex items-center gap-1.5"
+                className="btn-brutalist text-xs py-2 sm:py-1.5 px-3 flex items-center gap-1.5 shrink-0 min-h-[44px] sm:min-h-0"
                 title="Admin user management"
               >
-                <Users className="w-3.5 h-3.5" />
+                <Users className="w-3.5 h-3.5 shrink-0" />
                 <span>Admins</span>
               </Link>
             )}
@@ -362,9 +362,9 @@ export default function AdminHireRequestsPage() {
             <button
               onClick={handleReset}
               title="Reset sample client hire requests"
-              className="btn-brutalist text-xs py-1.5 px-3"
+              className="btn-brutalist text-xs py-2 sm:py-1.5 px-3 shrink-0 min-h-[44px] sm:min-h-0 flex items-center gap-1.5"
             >
-              <RotateCcw className="w-3 h-3" />
+              <RotateCcw className="w-3 h-3 shrink-0" />
               <span>Reset</span>
             </button>
 
@@ -372,15 +372,15 @@ export default function AdminHireRequestsPage() {
             {canExportHireRequests(hrUser.role) ? (
               <button
                 onClick={handleExportCSV}
-                className="btn-brutalist text-xs py-1.5 px-3"
+                className="btn-brutalist text-xs py-2 sm:py-1.5 px-3 shrink-0 min-h-[44px] sm:min-h-0 flex items-center gap-1.5"
                 title="Download client requests as CSV"
               >
-                <Download className="w-3.5 h-3.5" />
+                <Download className="w-3.5 h-3.5 shrink-0" />
                 <span>CSV</span>
               </button>
             ) : (
               <span 
-                className="px-2 py-1 border border-dashed border-zinc-400 bg-zinc-100 text-zinc-500 text-[10px] font-mono uppercase font-bold"
+                className="px-2 py-1.5 border border-dashed border-zinc-400 bg-zinc-100 text-zinc-500 text-[10px] font-mono uppercase font-bold shrink-0"
                 title="Sales Executives do not have export permissions"
               >
                 Exports Restricted
@@ -390,7 +390,7 @@ export default function AdminHireRequestsPage() {
         </div>
 
         {/* Metrics Grid */}
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
           <div className="bg-white border-2 border-[#111113] p-4 shadow-[2px_2px_0px_0px_#111113]">
             <span className="font-mono text-[10px] text-[#111113]/60 uppercase block">
               Total Inquiries
@@ -427,7 +427,7 @@ export default function AdminHireRequestsPage() {
             </span>
           </div>
 
-          <div className="bg-white border-2 border-[#111113] p-4 shadow-[2px_2px_0px_0px_#111113]">
+          <div className="bg-white border-2 border-[#111113] p-4 shadow-[2px_2px_0px_0px_#111113] col-span-2 sm:col-span-1 lg:col-span-1">
             <span className="font-mono text-[10px] text-emerald-700 uppercase block font-bold">
               Contracts Signed
             </span>
@@ -613,18 +613,18 @@ export default function AdminHireRequestsPage() {
 
         {/* Offline Review & Detail Modal / Drawer */}
         {activeRequest && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#111113]/70 backdrop-blur-xs">
-            <div className="bg-[#F8F7F4] border-2 border-[#111113] max-w-2xl w-full max-h-[90vh] overflow-y-auto p-6 sm:p-8 relative shadow-[10px_10px_0px_0px_#111113] space-y-6">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-[#111113]/70 backdrop-blur-xs">
+            <div className="bg-[#F8F7F4] border-2 border-[#111113] max-w-2xl w-full max-h-[92vh] overflow-y-auto p-4 sm:p-8 relative shadow-[6px_6px_0px_0px_#111113] sm:shadow-[10px_10px_0px_0px_#111113] space-y-5 sm:space-y-6">
               {/* Header */}
-              <div className="flex items-start justify-between border-b-2 border-[#111113] pb-4">
-                <div>
-                  <div className="flex items-center gap-2 font-mono text-xs">
+              <div className="flex items-start justify-between border-b-2 border-[#111113] pb-4 gap-3">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2 font-mono text-xs flex-wrap">
                     <span className="bg-[#FF4D00] text-white px-2 py-0.5 font-bold uppercase">
                       CLIENT DOSSIER
                     </span>
-                    <span className="text-[#111113]/60">{activeRequest.id}</span>
+                    <span className="text-[#111113]/60 truncate">{activeRequest.id}</span>
                   </div>
-                  <h2 className="font-syne font-bold text-2xl text-[#111113] mt-1">
+                  <h2 className="font-syne font-bold text-xl sm:text-2xl text-[#111113] mt-1 break-words">
                     {activeRequest.business_name}
                   </h2>
                   <p className="font-sans text-xs text-[#111113]/70">
@@ -634,7 +634,8 @@ export default function AdminHireRequestsPage() {
 
                 <button
                   onClick={() => setActiveRequest(null)}
-                  className="p-1 border-2 border-[#111113] hover:bg-[#111113] hover:text-[#F8F7F4] transition-colors"
+                  className="p-2 border-2 border-[#111113] hover:bg-[#111113] hover:text-[#F8F7F4] transition-colors shrink-0 min-h-[44px] min-w-[44px] flex items-center justify-center"
+                  aria-label="Close dialog"
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -659,7 +660,7 @@ export default function AdminHireRequestsPage() {
 
                 <div className="bg-white border-2 border-[#111113] p-3 space-y-1">
                   <span className="text-[10px] text-[#111113]/60 uppercase block">Submission Date</span>
-                  <strong className="text-xs text-[#111113]">
+                  <strong suppressHydrationWarning className="text-xs text-[#111113]">
                     {new Date(activeRequest.created_at).toLocaleString()}
                   </strong>
                 </div>
@@ -773,11 +774,11 @@ export default function AdminHireRequestsPage() {
                   ></textarea>
                 </div>
 
-                <div className="flex justify-end gap-2 pt-1">
+                <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2 pt-2">
                   <button
                     type="button"
                     onClick={() => setActiveRequest(null)}
-                    className="btn-brutalist text-xs py-2 px-4"
+                    className="btn-brutalist text-xs py-2.5 px-4 min-h-[44px] flex items-center justify-center"
                   >
                     Cancel
                   </button>
@@ -785,9 +786,9 @@ export default function AdminHireRequestsPage() {
                     type="button"
                     disabled={isSaving}
                     onClick={handleSaveReview}
-                    className="btn-brutalist btn-brutalist-primary text-xs py-2 px-6 flex items-center gap-1.5"
+                    className="btn-brutalist btn-brutalist-primary text-xs py-2.5 px-6 min-h-[44px] flex items-center justify-center gap-1.5"
                   >
-                    <Save className="w-3.5 h-3.5" />
+                    <Save className="w-3.5 h-3.5 shrink-0" />
                     <span>{isSaving ? 'Saving...' : 'Save Review Notes'}</span>
                   </button>
                 </div>

@@ -196,8 +196,31 @@ export default function PrivacyPolicyPage() {
             </div>
           </aside>
 
+          {/* Quick Navigation Dropdown / Accordion for Mobile & Tablet */}
+          <details className="lg:hidden col-span-1 bg-white border-2 border-[#111113] p-4 shadow-[4px_4px_0px_0px_#111113] group">
+            <summary className="font-mono text-xs uppercase tracking-widest font-bold text-[#111113] flex items-center justify-between cursor-pointer list-none select-none">
+              <span className="flex items-center gap-2">
+                <FileText className="w-4 h-4 text-[#FF4D00]" />
+                <span>Jump to Section ({sections.length} topics)</span>
+              </span>
+              <span className="font-bold text-[#FF4D00] text-sm group-open:rotate-180 transition-transform">▼</span>
+            </summary>
+            <nav className="mt-3 pt-3 border-t border-[#111113]/20 grid grid-cols-1 sm:grid-cols-2 gap-1.5 font-mono text-xs">
+              {sections.map((s) => (
+                <a
+                  key={s.id}
+                  href={`#${s.id}`}
+                  className="py-2 px-2.5 bg-[#F8F7F4] hover:bg-[#111113] hover:text-white transition-colors border border-[#111113]/20 text-[11px] flex items-center justify-between"
+                >
+                  <span>{s.label}</span>
+                  <span className="text-[#FF4D00] text-[10px]">→</span>
+                </a>
+              ))}
+            </nav>
+          </details>
+
           {/* Legal Text Body */}
-          <article className="lg:col-span-9 bg-white border-2 border-[#111113] p-6 sm:p-10 shadow-[6px_6px_0px_0px_#111113] space-y-10">
+          <article className="lg:col-span-9 bg-white border-2 border-[#111113] p-4 sm:p-8 lg:p-10 shadow-[6px_6px_0px_0px_#111113] space-y-8 sm:space-y-10">
 
             {/* Section 1 */}
             <section id="controller" className="scroll-mt-32 space-y-4">

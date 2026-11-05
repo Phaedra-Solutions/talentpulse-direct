@@ -213,20 +213,20 @@ function HireRequestContent() {
             </div>
 
             {/* Actions */}
-            <div className="flex flex-wrap items-center gap-4 pt-2">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 sm:gap-4 pt-2">
               <button
                 type="button"
                 onClick={() => {
                   setSubmitSuccess(false);
                   setSubmittedData(null);
                 }}
-                className="btn-brutalist btn-brutalist-primary text-xs py-3 px-6"
+                className="btn-brutalist btn-brutalist-primary text-xs py-3.5 px-6 min-h-[44px] flex items-center justify-center"
               >
                 Submit Another Request
               </button>
               <Link
                 href="/"
-                className="btn-brutalist text-xs py-3 px-6"
+                className="btn-brutalist text-xs py-3.5 px-6 min-h-[44px] flex items-center justify-center"
               >
                 Return to Overview
               </Link>

@@ -1,48 +1,37 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, Suspense } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Navbar } from '@/components/Navbar';
 import { 
-  ShieldCheck, 
   Lock, 
-  Mail, 
-  ArrowRight, 
-  AlertCircle, 
-  KeyRound,
-  ShieldAlert,
-  Database
+  AlertCircle
 } from 'lucide-react';
 import { 
   signInHrRecruiter, 
-  getCurrentHrUser,
-  AUTHORIZED_ADMIN_EMAIL 
+  getCurrentHrUser
 } from '@/lib/auth/recruiter-auth';
 
-export default function AdminLoginPage() {
+function AdminLoginContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [email, setEmail] = useState<string>('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(() => {
-    if (typeof window === 'undefined') return null;
-    const params = new URLSearchParams(window.location.search);
-    if (params.get('unauthorized') === 'true') {
-      return 'Access Restricted: You must authenticate with an authorized administrator account to access that page.';
-    }
-    return null;
-  });
+  const [formError, setFormError] = useState<string | null>(null);
+
+  const isUnauthorized = searchParams.get('unauthorized') === 'true';
+  const errorMessage = formError || (isUnauthorized ? 'Access Restricted: You must authenticate with an authorized administrator account to access that page.' : null);
 
   // If already authenticated, redirect to requested destination or dashboard
   React.useEffect(() => {
     const user = getCurrentHrUser();
     if (user && user.email) {
-      const params = new URLSearchParams(window.location.search);
-      const redirectUrl = params.get('redirect') || '/admin/dashboard';
+      const redirectUrl = searchParams.get('redirect') || '/admin/dashboard';
       router.replace(redirectUrl);
     }
-  }, [router]);
+  }, [router, searchParams]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -50,16 +39,16 @@ export default function AdminLoginPage() {
     const loginPass = password.trim();
 
     if (!loginEmail) {
-      setErrorMessage('Please enter your administrator email address.');
+      setFormError('Please enter your administrator email address.');
       return;
     }
     if (!loginPass) {
-      setErrorMessage('Password is required. Unauthenticated access is not permitted.');
+      setFormError('Password is required. Unauthenticated access is not permitted.');
       return;
     }
 
     setIsLoading(true);
-    setErrorMessage(null);
+    setFormError(null);
 
     try {
       const res = await signInHrRecruiter(loginEmail, loginPass);
@@ -68,14 +57,13 @@ export default function AdminLoginPage() {
           router.push(`/admin/change-password?email=${encodeURIComponent(loginEmail)}&first_login=true`);
           return;
         }
-        const params = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
-        const redirectUrl = params?.get('redirect') || '/admin/dashboard';
+        const redirectUrl = searchParams.get('redirect') || '/admin/dashboard';
         router.push(redirectUrl);
       } else {
-        setErrorMessage(res.error || 'Authentication failed. Please verify credentials.');
+        setFormError(res.error || 'Authentication failed. Please verify credentials.');
       }
     } catch (err: any) {
-      setErrorMessage(err.message || 'An unexpected authentication error occurred.');
+      setFormError(err.message || 'An unexpected authentication error occurred.');
     } finally {
       setIsLoading(false);
     }
@@ -171,5 +159,19 @@ export default function AdminLoginPage() {
         </div>
       </main>
     </div>
+  );
+}
+
+export default function AdminLoginPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-[#F8F7F4] flex flex-col items-center justify-center p-6 font-mono text-xs">
+          Loading Admin Gate...
+        </div>
+      }
+    >
+      <AdminLoginContent />
+    </Suspense>
   );
 }

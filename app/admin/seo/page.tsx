@@ -80,43 +80,43 @@ export default function AdminSeoPage() {
           </div>
 
           {/* Quick Sub-navigation */}
-          <div className="flex flex-wrap items-center gap-2 font-mono text-xs">
+          <div className="flex items-center gap-2 overflow-x-auto pb-1 sm:pb-0 scrollbar-none max-w-full sm:flex-wrap font-mono text-xs">
             <Link
               href="/admin/dashboard"
-              className="px-3 py-1.5 border border-[#F8F7F4]/20 hover:border-white transition-colors flex items-center gap-1.5"
+              className="px-3 py-2 sm:py-1.5 border border-[#F8F7F4]/20 hover:border-white transition-colors flex items-center gap-1.5 shrink-0 min-h-[44px] sm:min-h-0"
             >
-              <Users className="w-3.5 h-3.5" /> Candidates
+              <Users className="w-3.5 h-3.5 shrink-0" /> <span>Candidates</span>
             </Link>
 
             {canAccessHireRequests(hrUser?.role) && (
               <Link
                 href="/admin/hire-requests"
-                className="px-3 py-1.5 border border-[#F8F7F4]/20 hover:border-white transition-colors flex items-center gap-1.5"
+                className="px-3 py-2 sm:py-1.5 border border-[#F8F7F4]/20 hover:border-white transition-colors flex items-center gap-1.5 shrink-0 min-h-[44px] sm:min-h-0"
               >
-                <Briefcase className="w-3.5 h-3.5" /> Hire Requests
+                <Briefcase className="w-3.5 h-3.5 shrink-0" /> <span>Hire Requests</span>
               </Link>
             )}
 
             {canManageRolesAndTech(hrUser?.role) && (
               <Link
                 href="/admin/roles"
-                className="px-3 py-1.5 border border-[#F8F7F4]/20 hover:border-white transition-colors flex items-center gap-1.5"
+                className="px-3 py-2 sm:py-1.5 border border-[#F8F7F4]/20 hover:border-white transition-colors flex items-center gap-1.5 shrink-0 min-h-[44px] sm:min-h-0"
               >
-                <Layers className="w-3.5 h-3.5" /> Roles & Tech
+                <Layers className="w-3.5 h-3.5 shrink-0" /> <span>Roles & Tech</span>
               </Link>
             )}
 
             {canManageAdminUsers(hrUser?.role) && (
               <Link
                 href="/admin/users"
-                className="px-3 py-1.5 border border-[#F8F7F4]/20 hover:border-white transition-colors flex items-center gap-1.5"
+                className="px-3 py-2 sm:py-1.5 border border-[#F8F7F4]/20 hover:border-white transition-colors flex items-center gap-1.5 shrink-0 min-h-[44px] sm:min-h-0"
               >
-                <Shield className="w-3.5 h-3.5" /> User Access
+                <Shield className="w-3.5 h-3.5 shrink-0" /> <span>User Access</span>
               </Link>
             )}
 
-            <div className="px-3 py-1.5 bg-[#FF4D00] text-white font-bold flex items-center gap-1.5">
-              <Globe className="w-3.5 h-3.5" /> SEO Suite
+            <div className="px-3 py-2 sm:py-1.5 bg-[#FF4D00] text-white font-bold flex items-center gap-1.5 shrink-0 min-h-[44px] sm:min-h-0">
+              <Globe className="w-3.5 h-3.5 shrink-0" /> <span>SEO Suite</span>
             </div>
           </div>
         </div>

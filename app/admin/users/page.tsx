@@ -404,44 +404,44 @@ export default function AdminUsersManagementPage() {
             </div>
           </div>
 
-          <div className="flex items-center gap-2 flex-wrap font-mono text-xs">
+          <div className="flex items-center gap-2 overflow-x-auto pb-2 sm:pb-0 scrollbar-none max-w-full sm:flex-wrap font-mono text-xs">
             <Link
               href="/admin/dashboard"
-              className="btn-brutalist py-1.5 px-3 text-xs flex items-center gap-1.5"
+              className="btn-brutalist py-2 sm:py-1.5 px-3 text-xs flex items-center gap-1.5 shrink-0 min-h-[44px] sm:min-h-0"
             >
-              <Users className="w-3.5 h-3.5" />
+              <Users className="w-3.5 h-3.5 shrink-0" />
               <span>Candidates</span>
             </Link>
             <Link
               href="/admin/hire-requests"
-              className="btn-brutalist py-1.5 px-3 text-xs flex items-center gap-1.5"
+              className="btn-brutalist py-2 sm:py-1.5 px-3 text-xs flex items-center gap-1.5 shrink-0 min-h-[44px] sm:min-h-0"
               title="Review client hire requests and manage offline outreach"
             >
-              <Briefcase className="w-3.5 h-3.5" />
+              <Briefcase className="w-3.5 h-3.5 shrink-0" />
               <span>Hire Requests</span>
             </Link>
             <Link
               href="/admin/roles"
-              className="btn-brutalist py-1.5 px-3 text-xs flex items-center gap-1.5"
+              className="btn-brutalist py-2 sm:py-1.5 px-3 text-xs flex items-center gap-1.5 shrink-0 min-h-[44px] sm:min-h-0"
               title="Manage dynamic roles, open/closed status, and technologies moderation"
             >
-              <Cpu className="w-3.5 h-3.5" />
+              <Cpu className="w-3.5 h-3.5 shrink-0" />
               <span>Roles &amp; Tech</span>
             </Link>
             <button
               onClick={() => setIsAddModalOpen(true)}
-              className="btn-brutalist btn-brutalist-primary py-1.5 px-3 text-xs font-bold flex items-center gap-1.5"
+              className="btn-brutalist btn-brutalist-primary py-2 sm:py-1.5 px-3 text-xs font-bold flex items-center gap-1.5 shrink-0 min-h-[44px] sm:min-h-0"
             >
-              <UserPlus className="w-4 h-4" />
+              <UserPlus className="w-4 h-4 shrink-0" />
               <span>Add User</span>
             </button>
             <button
               onClick={fetchUsers}
               disabled={isLoading}
-              className="p-2 border-2 border-[#111113] bg-white hover:bg-[#F8F7F4] transition disabled:opacity-50"
+              className="p-2 border-2 border-[#111113] bg-white hover:bg-[#F8F7F4] transition disabled:opacity-50 shrink-0 min-h-[44px] min-w-[44px] sm:min-h-0 sm:min-w-0 flex items-center justify-center"
               title="Refresh Users List"
             >
-              <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+              <RefreshCw className={`w-4 h-4 shrink-0 ${isLoading ? 'animate-spin' : ''}`} />
             </button>
           </div>
         </div>
@@ -625,7 +625,7 @@ export default function AdminUsersManagementPage() {
                         {/* Last Login */}
                         <td className="py-3.5 px-4 font-mono text-[11px] text-[#111113]/70">
                           {user.last_login_at ? (
-                            <span>{new Date(user.last_login_at).toLocaleDateString()} {new Date(user.last_login_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                            <span suppressHydrationWarning>{new Date(user.last_login_at).toLocaleDateString()} {new Date(user.last_login_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                           ) : (
                             <span className="text-[#FF4D00] font-bold uppercase text-[10px]">Never (Awaiting Invite)</span>
                           )}
@@ -729,8 +729,8 @@ export default function AdminUsersManagementPage() {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div className="col-span-2 sm:col-span-1">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
                   <label className="block font-mono text-xs uppercase font-bold text-[#111113] mb-1">
                     Clearance Role
                   </label>
@@ -768,18 +768,18 @@ export default function AdminUsersManagementPage() {
                 </div>
               </div>
 
-              <div className="pt-3 border-t-2 border-[#111113]/20 flex items-center justify-end gap-3 font-mono text-xs">
+              <div className="pt-3 border-t-2 border-[#111113]/20 flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-3 font-mono text-xs">
                 <button
                   type="button"
                   onClick={() => setIsAddModalOpen(false)}
-                  className="btn-brutalist py-2.5 px-4"
+                  className="btn-brutalist py-2.5 px-4 min-h-[44px] flex items-center justify-center"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="btn-brutalist btn-brutalist-primary py-2.5 px-5 disabled:opacity-50"
+                  className="btn-brutalist btn-brutalist-primary py-2.5 px-5 disabled:opacity-50 min-h-[44px] flex items-center justify-center"
                 >
                   {isSubmitting ? 'Provisioning...' : 'Provision & Generate Invite'}
                 </button>

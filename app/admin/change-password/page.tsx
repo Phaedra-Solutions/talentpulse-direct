@@ -1,13 +1,13 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Navbar } from '@/components/Navbar';
 import { 
-  getCurrentHrUser, 
-  updateHrUserSession, 
-  HrUser 
+  getCurrentHrUser,
+  useCurrentHrUser,
+  updateHrUserSession
 } from '@/lib/auth/recruiter-auth';
 import { 
   KeyRound, 
@@ -21,20 +21,19 @@ import {
   EyeOff
 } from 'lucide-react';
 
-export default function AdminChangePasswordPage() {
+function AdminChangePasswordContent() {
   const router = useRouter();
-  const [currentUser] = useState<HrUser | null>(() => {
-    if (typeof window === 'undefined') return null;
-    return getCurrentHrUser();
-  });
-  const [email, setEmail] = useState<string>(() => {
-    if (typeof window === 'undefined') return '';
-    const params = new URLSearchParams(window.location.search);
-    const emailParam = params.get('email');
-    if (emailParam) return emailParam;
-    const user = getCurrentHrUser();
-    return user?.email || '';
-  });
+  const searchParams = useSearchParams();
+  const hrUser = useCurrentHrUser();
+
+  const emailParam = searchParams.get('email');
+  const firstParam = searchParams.get('first_login') === 'true';
+  const isFirstLogin = firstParam || Boolean(hrUser?.must_change_password);
+
+  const initialEmail = emailParam || hrUser?.email || '';
+  const [customEmail, setCustomEmail] = useState<string | null>(null);
+  const email = customEmail !== null ? customEmail : initialEmail;
+
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -43,23 +42,15 @@ export default function AdminChangePasswordPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
-  const [isFirstLogin] = useState<boolean>(() => {
-    if (typeof window === 'undefined') return false;
-    const params = new URLSearchParams(window.location.search);
-    const firstParam = params.get('first_login') === 'true';
-    const user = getCurrentHrUser();
-    return firstParam || Boolean(user?.must_change_password);
-  });
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const params = new URLSearchParams(window.location.search);
-    const emailParam = params.get('email');
-    const user = getCurrentHrUser();
-    if (!emailParam && !user) {
-      router.replace('/admin/login');
+    if (!emailParam && !hrUser) {
+      const stored = getCurrentHrUser();
+      if (!stored) {
+        router.replace('/admin/login');
+      }
     }
-  }, [router]);
+  }, [emailParam, hrUser, router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -118,7 +109,7 @@ export default function AdminChangePasswordPage() {
       // Update local session
       updateHrUserSession({
         must_change_password: false,
-        name: data.user?.name || currentUser?.name,
+        name: data.user?.name || hrUser?.name,
       });
 
       // Redirect into dashboard
@@ -191,8 +182,8 @@ export default function AdminChangePasswordPage() {
                 <input
                   type="email"
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  readOnly={Boolean(currentUser?.email)}
+                  onChange={(e) => setCustomEmail(e.target.value)}
+                  readOnly={Boolean(hrUser?.email)}
                   className="w-full font-mono text-xs px-3.5 py-2.5 border-2 border-[#111113] bg-[#F8F7F4] text-[#111113] focus:outline-hidden"
                 />
               </div>
@@ -269,5 +260,19 @@ export default function AdminChangePasswordPage() {
         </div>
       </main>
     </div>
+  );
+}
+
+export default function AdminChangePasswordPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-[#F8F7F4] flex flex-col items-center justify-center p-6 font-mono text-xs">
+          Loading Security Settings...
+        </div>
+      }
+    >
+      <AdminChangePasswordContent />
+    </Suspense>
   );
 }

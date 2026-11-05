@@ -71,48 +71,56 @@ export default function HomePage() {
           </div>
 
           {/* Syne Display Heading */}
-          <h1 className="font-syne font-extrabold text-[clamp(2.75rem,7.5vw,7.5rem)] leading-[0.92] tracking-[-0.04em] text-[#111113] uppercase mb-8">
+          <h1 className="font-syne font-extrabold text-[clamp(2.1rem,6.8vw,7.5rem)] leading-[0.94] sm:leading-[0.92] tracking-[-0.04em] text-[#111113] uppercase mb-8 break-words">
             GLOBAL ON-DEMAND<br />
             <span className="text-[#111113]">ENGINEERING POOL</span>
           </h1>
 
           <div className="max-w-2xl mt-4">
-            <p className="text-lg sm:text-2xl text-[#111113]/85 font-normal leading-relaxed mb-8">
+            <p className="text-base sm:text-xl lg:text-2xl text-[#111113]/85 font-normal leading-relaxed mb-8">
               We connect elite AI Engineers, FDEs, and Systems Architects with global tech clients. No permanent placements. Pure delivery.
             </p>
 
-            <div className="flex flex-wrap items-center gap-4">
-              <Link href="/hire" className="btn-brutalist btn-brutalist-primary">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 sm:gap-4">
+              <Link href="/hire" className="btn-brutalist btn-brutalist-primary py-3.5 sm:py-3 min-h-[44px] flex items-center justify-center gap-2">
                 <span>Hire Contract Talent</span>
                 <ArrowRight className="w-4 h-4" />
               </Link>
 
-              <Link href="/apply" className="btn-brutalist">
+              <Link href="/apply" className="btn-brutalist py-3.5 sm:py-3 min-h-[44px] flex items-center justify-center">
                 <span>Join Talent Pool</span>
               </Link>
             </div>
           </div>
 
           {/* Key Metrics Strip - Brutalist Grid */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-px bg-[#111113] border-2 border-[#111113] mt-16 text-left">
-            <div className="bg-[#F8F7F4] p-5 sm:p-6">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-px bg-[#111113] border-2 border-[#111113] mt-16 text-left">
+            <div className="bg-[#F8F7F4] p-4 sm:p-5 lg:p-6 min-w-0">
               <div className="font-mono text-[10px] uppercase tracking-widest text-[#111113]/60 mb-1">[METRIC 01]</div>
-              <div className="font-syne font-extrabold text-3xl sm:text-4xl text-[#111113]">48 HRS</div>
+              <div className="font-syne font-extrabold text-[clamp(1.15rem,3.2vw,2.25rem)] text-[#111113] tracking-tight leading-tight whitespace-nowrap">
+                48 HRS
+              </div>
               <div className="font-mono text-xs text-[#111113]/70 mt-1 uppercase">Vetting to Deploy</div>
             </div>
-            <div className="bg-[#F8F7F4] p-5 sm:p-6">
+            <div className="bg-[#F8F7F4] p-4 sm:p-5 lg:p-6 min-w-0">
               <div className="font-mono text-[10px] uppercase tracking-widest text-[#111113]/60 mb-1">[METRIC 02]</div>
-              <div className="font-syne font-extrabold text-3xl sm:text-4xl text-[#FF4D00]">100%</div>
+              <div className="font-syne font-extrabold text-[clamp(1.15rem,3.2vw,2.25rem)] text-[#FF4D00] tracking-tight leading-tight whitespace-nowrap">
+                100%
+              </div>
               <div className="font-mono text-xs text-[#111113]/70 mt-1 uppercase">Contractual Pure</div>
             </div>
-            <div className="bg-[#F8F7F4] p-5 sm:p-6">
+            <div className="bg-[#F8F7F4] p-4 sm:p-5 lg:p-6 min-w-0">
               <div className="font-mono text-[10px] uppercase tracking-widest text-[#111113]/60 mb-1">[METRIC 03]</div>
-              <div className="font-syne font-extrabold text-3xl sm:text-4xl text-[#111113]">4 - 8 HRS</div>
+              <div className="font-syne font-extrabold text-[clamp(1.15rem,3.2vw,2.25rem)] text-[#111113] tracking-tight leading-tight whitespace-nowrap">
+                4 - 8 HRS
+              </div>
               <div className="font-mono text-xs text-[#111113]/70 mt-1 uppercase">Daily Overlap</div>
             </div>
-            <div className="bg-[#F8F7F4] p-5 sm:p-6">
+            <div className="bg-[#F8F7F4] p-4 sm:p-5 lg:p-6 min-w-0">
               <div className="font-mono text-[10px] uppercase tracking-widest text-[#111113]/60 mb-1">[METRIC 04]</div>
-              <div className="font-syne font-extrabold text-3xl sm:text-4xl text-[#111113]">VERIFIED</div>
+              <div className="font-syne font-extrabold text-[clamp(1.15rem,3.2vw,2.25rem)] text-[#111113] tracking-tight leading-tight whitespace-nowrap">
+                VERIFIED
+              </div>
               <div className="font-mono text-xs text-[#111113]/70 mt-1 uppercase">Artifacts &amp; Pitches</div>
             </div>
           </div>

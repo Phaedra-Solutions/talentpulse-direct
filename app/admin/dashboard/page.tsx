@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, Suspense } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { 
   Candidate, 
   CandidateFilters, 
@@ -60,7 +60,7 @@ import {
   Globe
 } from 'lucide-react';
 
-export default function AdminDashboardPage() {
+function AdminDashboardContent() {
   const router = useRouter();
   const hrUser = useCurrentHrUser();
   const isAuthorized = Boolean(hrUser && hrUser.email && canAccessCandidatePipeline(hrUser.role));
@@ -85,22 +85,18 @@ export default function AdminDashboardPage() {
     sortOrder: 'desc',
   });
 
-  // Unauthorized redirection notification banner state
-  const [unauthorizedNotice, setUnauthorizedNotice] = useState<string | null>(() => {
-    if (typeof window === 'undefined') return null;
-    const params = new URLSearchParams(window.location.search);
-    const unauth = params.get('unauthorized');
-    if (unauth === 'hire-requests') {
-      return 'Access Restricted: HR Executives are authorized to manage candidate pipelines, export candidate records as Excel (.xlsx), and administer Roles & Technologies, but are not permitted to access Customer Hire Requests.';
-    }
-    if (unauth === 'roles') {
-      return 'Access Restricted: Sales Executives are authorized to view and update candidate pipelines and customer hire requests, but are not permitted to configure Roles & Technologies.';
-    }
-    if (unauth === 'users') {
-      return 'Access Restricted: Team clearance and administrator provisioning is restricted strictly to Administrators.';
-    }
-    return null;
-  });
+  const searchParams = useSearchParams();
+  const [isNoticeDismissed, setIsNoticeDismissed] = useState(false);
+  const unauth = searchParams.get('unauthorized');
+  const unauthorizedNotice = isNoticeDismissed ? null : (
+    unauth === 'hire-requests'
+      ? 'Access Restricted: HR Executives are authorized to manage candidate pipelines, export candidate records as Excel (.xlsx), and administer Roles & Technologies, but are not permitted to access Customer Hire Requests.'
+      : unauth === 'roles'
+      ? 'Access Restricted: Sales Executives are authorized to view and update candidate pipelines and customer hire requests, but are not permitted to configure Roles & Technologies.'
+      : unauth === 'users'
+      ? 'Access Restricted: Team clearance and administrator provisioning is restricted strictly to Administrators.'
+      : null
+  );
 
   const handleSwitchSimulatedRole = (newRole: RecruiterRole) => {
     if (!hrUser) return;
@@ -426,7 +422,7 @@ export default function AdminDashboardPage() {
               </div>
             </div>
             <button
-              onClick={() => setUnauthorizedNotice(null)}
+              onClick={() => setIsNoticeDismissed(true)}
               className="p-1 hover:bg-black/10 font-bold ml-4"
               title="Dismiss warning"
             >
@@ -456,11 +452,11 @@ export default function AdminDashboardPage() {
             </p>
           </div>
 
-          <div className="flex items-center gap-2 flex-wrap font-mono text-xs">
+          <div className="flex items-center gap-2 overflow-x-auto pb-2 sm:pb-0 scrollbar-none max-w-full sm:flex-wrap font-mono text-xs">
             {/* Live Role Switcher (Facilitates testing and multi-role evaluation) */}
-            <div className="flex items-center gap-1.5 border-2 border-[#111113] bg-[#F8F7F4] px-2 py-1 text-xs font-mono shadow-[2px_2px_0px_0px_#111113]">
-              <ShieldCheck className="w-3.5 h-3.5 text-[#FF4D00]" />
-              <span className="text-[10px] text-[#111113]/70 uppercase font-bold">Role:</span>
+            <div className="flex items-center gap-1.5 border-2 border-[#111113] bg-[#F8F7F4] px-2.5 py-1.5 sm:py-1 text-xs font-mono shadow-[2px_2px_0px_0px_#111113] shrink-0 min-h-[44px] sm:min-h-0">
+              <ShieldCheck className="w-3.5 h-3.5 text-[#FF4D00] shrink-0" />
+              <span className="text-[10px] text-[#111113]/70 uppercase font-bold shrink-0">Role:</span>
               <select
                 value={hrUser.role}
                 onChange={(e) => handleSwitchSimulatedRole(e.target.value as RecruiterRole)}
@@ -477,10 +473,10 @@ export default function AdminDashboardPage() {
             {canAccessHireRequests(hrUser.role) && (
               <Link
                 href="/admin/hire-requests"
-                className="btn-brutalist btn-brutalist-primary text-xs py-1.5 px-3 flex items-center gap-1.5"
+                className="btn-brutalist btn-brutalist-primary text-xs py-2 sm:py-1.5 px-3 flex items-center gap-1.5 shrink-0 min-h-[44px] sm:min-h-0"
                 title="Review client hire requests and manage offline outreach"
               >
-                <Briefcase className="w-3.5 h-3.5" />
+                <Briefcase className="w-3.5 h-3.5 shrink-0" />
                 <span>Hire Requests</span>
               </Link>
             )}
@@ -489,10 +485,10 @@ export default function AdminDashboardPage() {
             {canManageRolesAndTech(hrUser.role) && (
               <Link
                 href="/admin/roles"
-                className="btn-brutalist text-xs py-1.5 px-3 flex items-center gap-1.5"
+                className="btn-brutalist text-xs py-2 sm:py-1.5 px-3 flex items-center gap-1.5 shrink-0 min-h-[44px] sm:min-h-0"
                 title="Manage dynamic tracks, open/closed status, and technology moderation"
               >
-                <Cpu className="w-3.5 h-3.5" />
+                <Cpu className="w-3.5 h-3.5 shrink-0" />
                 <span>Roles &amp; Tech</span>
               </Link>
             )}
@@ -501,10 +497,10 @@ export default function AdminDashboardPage() {
             {canManageAdminUsers(hrUser.role) && (
               <Link
                 href="/admin/users"
-                className="btn-brutalist text-xs py-1.5 px-3 flex items-center gap-1.5"
+                className="btn-brutalist text-xs py-2 sm:py-1.5 px-3 flex items-center gap-1.5 shrink-0 min-h-[44px] sm:min-h-0"
                 title="Manage administrator users, active clearance, and invite links"
               >
-                <Users className="w-3.5 h-3.5" />
+                <Users className="w-3.5 h-3.5 shrink-0" />
                 <span>Admins</span>
               </Link>
             )}
@@ -513,29 +509,29 @@ export default function AdminDashboardPage() {
             {canManageSeo(hrUser.role) && (
               <Link
                 href="/admin/seo"
-                className="btn-brutalist text-xs py-1.5 px-3 flex items-center gap-1.5"
+                className="btn-brutalist text-xs py-2 sm:py-1.5 px-3 flex items-center gap-1.5 shrink-0 min-h-[44px] sm:min-h-0"
                 title="Manage Global Meta, GTM Tracking, Schema.org, Robots and Sitemaps"
               >
-                <Globe className="w-3.5 h-3.5 text-[#FF4D00]" />
+                <Globe className="w-3.5 h-3.5 text-[#FF4D00] shrink-0" />
                 <span>SEO &amp; Tracking</span>
               </Link>
             )}
 
             <Link
               href="/admin/change-password"
-              className="btn-brutalist text-xs py-1.5 px-3 flex items-center gap-1.5"
+              className="btn-brutalist text-xs py-2 sm:py-1.5 px-3 flex items-center gap-1.5 shrink-0 min-h-[44px] sm:min-h-0"
               title="Update your administrative password"
             >
-              <KeyRound className="w-3.5 h-3.5" />
+              <KeyRound className="w-3.5 h-3.5 shrink-0" />
               <span>Password</span>
             </Link>
 
             <button
               onClick={handleResetData}
               title="Reset sample candidate dataset"
-              className="btn-brutalist text-xs py-1.5 px-3"
+              className="btn-brutalist text-xs py-2 sm:py-1.5 px-3 shrink-0 min-h-[44px] sm:min-h-0"
             >
-              <RotateCcw className="w-3 h-3" />
+              <RotateCcw className="w-3 h-3 shrink-0" />
               <span>Reset</span>
             </button>
 
@@ -544,25 +540,25 @@ export default function AdminDashboardPage() {
               <>
                 <button
                   onClick={handleExportXLSX}
-                  className="btn-brutalist text-xs py-1.5 px-3 bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border-emerald-900 font-bold flex items-center gap-1.5"
+                  className="btn-brutalist text-xs py-2 sm:py-1.5 px-3 bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border-emerald-900 font-bold flex items-center gap-1.5 shrink-0 min-h-[44px] sm:min-h-0"
                   title="Download candidate pipeline in native Excel format (.xlsx)"
                 >
-                  <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-700" />
-                  <span>Export Excel (.xlsx)</span>
+                  <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
+                  <span>Export Excel</span>
                 </button>
 
                 <button
                   onClick={handleExportCSV}
-                  className="btn-brutalist text-xs py-1.5 px-2.5"
+                  className="btn-brutalist text-xs py-2 sm:py-1.5 px-2.5 shrink-0 min-h-[44px] sm:min-h-0"
                   title="Download CSV file"
                 >
-                  <Download className="w-3 h-3" />
+                  <Download className="w-3 h-3 shrink-0" />
                   <span>CSV</span>
                 </button>
               </>
             ) : (
               <span 
-                className="px-2 py-1 border border-dashed border-zinc-400 bg-zinc-100 text-zinc-500 text-[10px] font-mono uppercase font-bold"
+                className="px-2 py-1.5 border border-dashed border-zinc-400 bg-zinc-100 text-zinc-500 text-[10px] font-mono uppercase font-bold shrink-0"
                 title="Sales Executives do not have export permissions"
               >
                 Exports Restricted
@@ -571,17 +567,17 @@ export default function AdminDashboardPage() {
 
             <Link
               href="/apply"
-              className="btn-brutalist text-xs py-1.5 px-3 bg-[#F8F7F4] hover:bg-[#111113] hover:text-[#F8F7F4]"
+              className="btn-brutalist text-xs py-2 sm:py-1.5 px-3 bg-[#F8F7F4] hover:bg-[#111113] hover:text-[#F8F7F4] shrink-0 min-h-[44px] sm:min-h-0 flex items-center gap-1"
             >
-              <Plus className="w-3 h-3" />
+              <Plus className="w-3 h-3 shrink-0" />
               <span>Add Candidate</span>
             </Link>
 
             <button
               onClick={handleSignOut}
-              className="btn-brutalist text-xs py-1.5 px-3 border-[#FF4D00] text-[#FF4D00] hover:bg-[#FF4D00] hover:text-white"
+              className="btn-brutalist text-xs py-2 sm:py-1.5 px-3 border-[#FF4D00] text-[#FF4D00] hover:bg-[#FF4D00] hover:text-white shrink-0 min-h-[44px] sm:min-h-0 flex items-center gap-1"
             >
-              <LogOut className="w-3 h-3" />
+              <LogOut className="w-3 h-3 shrink-0" />
               <span>Sign Out</span>
             </button>
           </div>
@@ -845,5 +841,19 @@ export default function AdminDashboardPage() {
         onStageChange={handleStageChange}
       />
     </div>
+  );
+}
+
+export default function AdminDashboardPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-[#F8F7F4] flex flex-col items-center justify-center p-6 font-mono text-xs">
+          Loading Admin Pipeline...
+        </div>
+      }
+    >
+      <AdminDashboardContent />
+    </Suspense>
   );
 }

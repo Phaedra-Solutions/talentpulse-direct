@@ -90,7 +90,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const baseUrl = settings.canonical_base_url || 'https://talentpulse.dev';
 
   return (
-    <html lang="en" className={`${inter.variable} ${spaceMono.variable} ${syne.variable}`}>
+    <html lang="en" suppressHydrationWarning className={`${inter.variable} ${spaceMono.variable} ${syne.variable}`}>
       <head>
         <GoogleTagManagerHead gtmId={settings.gtm_id} isEnabled={settings.is_gtm_enabled} />
         <OrganizationJsonLd settings={settings} />

@@ -320,12 +320,12 @@ function ApplyFormContent() {
           /* Multi-Step Wizard Container */
           <div className="bg-white border-2 border-[#111113] shadow-[8px_8px_0px_0px_#111113] overflow-hidden">
             {/* Step Indicator Header */}
-            <div className="bg-[#111113] text-[#F8F7F4] p-4 sm:p-5 flex flex-wrap items-center justify-between gap-4 border-b-2 border-[#111113]">
+            <div className="bg-[#111113] text-[#F8F7F4] p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 border-b-2 border-[#111113]">
               <div>
-                <span className="font-mono text-xs uppercase tracking-widest text-[#FF4D00] font-bold block mb-1">
+                <span className="font-mono text-[10px] sm:text-xs uppercase tracking-widest text-[#FF4D00] font-bold block mb-0.5">
                   [CANDIDATE ONBOARDING]
                 </span>
-                <span className="font-syne font-bold text-lg sm:text-xl">
+                <span className="font-syne font-bold text-base sm:text-xl">
                   Step {currentStep} of 5: {
                     currentStep === 1 ? 'Identity & Resume' :
                     currentStep === 2 ? 'Specialization Track' :
@@ -336,11 +336,11 @@ function ApplyFormContent() {
               </div>
 
               {/* Progress Steps Indicators */}
-              <div className="flex items-center gap-1.5 font-mono text-xs">
+              <div className="flex items-center gap-1 sm:gap-1.5 font-mono text-xs self-start sm:self-auto">
                 {[1, 2, 3, 4, 5].map((step) => (
                   <div
                     key={step}
-                    className={`w-7 h-7 border-2 flex items-center justify-center font-bold ${
+                    className={`w-6 h-6 sm:w-7 sm:h-7 border-2 flex items-center justify-center font-bold text-[11px] sm:text-xs ${
                       currentStep === step
                         ? 'bg-[#FF4D00] border-[#FF4D00] text-white'
                         : currentStep > step
@@ -1029,12 +1029,12 @@ function ApplyFormContent() {
               )}
 
               {/* Form Navigation Controls */}
-              <div className="pt-6 border-t-2 border-[#111113] flex items-center justify-between">
+              <div className="pt-6 border-t-2 border-[#111113] flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-between gap-3">
                 {currentStep > 1 ? (
                   <button
                     type="button"
                     onClick={handlePrevStep}
-                    className="btn-brutalist text-xs py-2.5 px-5"
+                    className="btn-brutalist text-xs py-3 sm:py-2.5 px-5 min-h-[44px] justify-center"
                   >
                     <ArrowLeft className="w-4 h-4" />
                     <span>Back</span>
@@ -1042,7 +1042,7 @@ function ApplyFormContent() {
                 ) : (
                   <Link
                     href="/"
-                    className="font-mono text-xs uppercase text-[#111113]/70 hover:text-[#FF4D00] transition-colors"
+                    className="font-mono text-xs uppercase text-[#111113]/70 hover:text-[#FF4D00] transition-colors py-2 text-center sm:text-left"
                   >
                     ← Cancel Application
                   </Link>
@@ -1052,7 +1052,7 @@ function ApplyFormContent() {
                   <button
                     type="button"
                     onClick={handleNextStep}
-                    className="btn-brutalist btn-brutalist-primary text-xs py-2.5 px-6 ml-auto"
+                    className="btn-brutalist btn-brutalist-primary text-xs py-3 sm:py-2.5 px-6 sm:ml-auto min-h-[44px] justify-center"
                   >
                     <span>Proceed to Step {currentStep + 1}</span>
                     <ArrowRight className="w-4 h-4" />
@@ -1061,7 +1061,7 @@ function ApplyFormContent() {
                   <button
                     type="submit"
                     disabled={isSubmitting}
-                    className="btn-brutalist btn-brutalist-primary text-xs py-3 px-8 ml-auto font-bold tracking-wider"
+                    className="btn-brutalist btn-brutalist-primary text-xs py-3 px-8 sm:ml-auto font-bold tracking-wider min-h-[44px] justify-center"
                   >
                     {isSubmitting ? 'Ingesting Dossier...' : 'Submit Final Application →'}
                   </button>

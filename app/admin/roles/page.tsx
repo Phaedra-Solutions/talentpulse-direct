@@ -437,12 +437,12 @@ export default function AdminRolesManagementPage() {
             </p>
           </div>
 
-          <div className="flex items-center gap-2 flex-wrap font-mono text-xs">
+          <div className="flex items-center gap-2 overflow-x-auto pb-2 sm:pb-0 scrollbar-none max-w-full sm:flex-wrap font-mono text-xs">
             <Link
               href="/admin/dashboard"
-              className="btn-brutalist text-xs py-1.5 px-3 flex items-center gap-1.5"
+              className="btn-brutalist text-xs py-2 sm:py-1.5 px-3 flex items-center gap-1.5 shrink-0 min-h-[44px] sm:min-h-0"
             >
-              <ArrowLeft className="w-3.5 h-3.5" />
+              <ArrowLeft className="w-3.5 h-3.5 shrink-0" />
               <span>Candidates</span>
             </Link>
 
@@ -450,10 +450,10 @@ export default function AdminRolesManagementPage() {
             {hrUser && canAccessHireRequests(hrUser.role) && (
               <Link
                 href="/admin/hire-requests"
-                className="btn-brutalist text-xs py-1.5 px-3 flex items-center gap-1.5"
+                className="btn-brutalist text-xs py-2 sm:py-1.5 px-3 flex items-center gap-1.5 shrink-0 min-h-[44px] sm:min-h-0"
                 title="Review client hire requests and manage offline outreach"
               >
-                <Briefcase className="w-3.5 h-3.5" />
+                <Briefcase className="w-3.5 h-3.5 shrink-0" />
                 <span>Hire Requests</span>
               </Link>
             )}
@@ -462,36 +462,36 @@ export default function AdminRolesManagementPage() {
             {hrUser && canManageAdminUsers(hrUser.role) && (
               <Link
                 href="/admin/users"
-                className="btn-brutalist text-xs py-1.5 px-3 flex items-center gap-1.5"
+                className="btn-brutalist text-xs py-2 sm:py-1.5 px-3 flex items-center gap-1.5 shrink-0 min-h-[44px] sm:min-h-0"
                 title="Admin team management"
               >
-                <Users className="w-3.5 h-3.5" />
+                <Users className="w-3.5 h-3.5 shrink-0" />
                 <span>Admins</span>
               </Link>
             )}
 
             <button
               onClick={() => handleOpenEditRole()}
-              className="btn-brutalist btn-brutalist-primary text-xs py-1.5 px-3 flex items-center gap-1.5"
+              className="btn-brutalist btn-brutalist-primary text-xs py-2 sm:py-1.5 px-3 flex items-center gap-1.5 shrink-0 min-h-[44px] sm:min-h-0"
             >
-              <Plus className="w-3.5 h-3.5" />
+              <Plus className="w-3.5 h-3.5 shrink-0" />
               <span>New Role</span>
             </button>
 
             <button
               onClick={() => setIsNewTechModalOpen(true)}
-              className="btn-brutalist text-xs py-1.5 px-3 flex items-center gap-1.5"
+              className="btn-brutalist text-xs py-2 sm:py-1.5 px-3 flex items-center gap-1.5 shrink-0 min-h-[44px] sm:min-h-0"
             >
-              <Plus className="w-3.5 h-3.5" />
+              <Plus className="w-3.5 h-3.5 shrink-0" />
               <span>New Technology</span>
             </button>
 
             <button
               onClick={handleResetToDefault}
               title="Reset roles and tech to default seed"
-              className="btn-brutalist text-xs py-1.5 px-2.5"
+              className="btn-brutalist text-xs py-2 sm:py-1.5 px-2.5 shrink-0 min-h-[44px] sm:min-h-0 flex items-center justify-center"
             >
-              <RotateCcw className="w-3 h-3" />
+              <RotateCcw className="w-3 h-3 shrink-0" />
             </button>
           </div>
         </div>
@@ -697,7 +697,7 @@ export default function AdminRolesManagementPage() {
                           Pending Review
                         </span>
                       </div>
-                      <span className="font-mono text-[10px] text-[#111113]/50 block mt-0.5">
+                      <span suppressHydrationWarning className="font-mono text-[10px] text-[#111113]/50 block mt-0.5">
                         Submitted on: {new Date(tech.created_at).toLocaleDateString()}
                       </span>
                     </div>
@@ -875,7 +875,7 @@ export default function AdminRolesManagementPage() {
                 </div>
 
                 {/* Status Toggle & Slug */}
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="block font-mono text-xs uppercase font-bold text-[#111113] mb-1">
                       Role Status
@@ -963,18 +963,18 @@ export default function AdminRolesManagementPage() {
                   </div>
                 </div>
 
-                <div className="pt-4 border-t-2 border-[#111113] flex items-center justify-end gap-3">
+                <div className="pt-4 border-t-2 border-[#111113] flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-3">
                   <button
                     type="button"
                     onClick={() => setIsRoleDrawerOpen(false)}
-                    className="btn-brutalist py-2 px-4 text-xs font-mono"
+                    className="btn-brutalist py-2.5 px-4 text-xs font-mono min-h-[44px] flex items-center justify-center"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
                     disabled={isSavingRole}
-                    className="btn-brutalist btn-brutalist-primary py-2 px-5 text-xs font-mono"
+                    className="btn-brutalist btn-brutalist-primary py-2.5 px-5 text-xs font-mono min-h-[44px] flex items-center justify-center"
                   >
                     {isSavingRole ? 'Saving...' : 'Save Role Specification'}
                   </button>
