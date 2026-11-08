@@ -248,51 +248,6 @@ export default function CandidateUpdatePage() {
                 <span>{searchError}</span>
               </div>
             )}
-
-            {/* Quick Demo Pre-fill buttons */}
-            <div className="pt-3 border-t-2 border-[#111113]/10 flex items-center gap-2 flex-wrap font-mono text-xs text-[#111113]/70">
-              <span className="font-bold text-[#111113] uppercase text-[10px]">Quick Test Profiles:</span>
-              <button
-                type="button"
-                onClick={() => {
-                  setSearchEmail('elena.rostova@engineer-pulse.dev');
-                  handleRequestOtp('elena.rostova@engineer-pulse.dev');
-                }}
-                className="px-2.5 py-1 border border-[#111113] bg-[#F8F7F4] hover:bg-[#111113] hover:text-[#F8F7F4] text-[#111113] text-xs font-mono transition"
-              >
-                Elena (AI)
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setSearchEmail('marcus.vance@fde-direct.io');
-                  handleRequestOtp('marcus.vance@fde-direct.io');
-                }}
-                className="px-2.5 py-1 border border-[#111113] bg-[#F8F7F4] hover:bg-[#111113] hover:text-[#F8F7F4] text-[#111113] text-xs font-mono transition"
-              >
-                Marcus (FDE)
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setSearchEmail('sophia.chen@mobile-cloud.io');
-                  handleRequestOtp('sophia.chen@mobile-cloud.io');
-                }}
-                className="px-2.5 py-1 border border-[#111113] bg-[#F8F7F4] hover:bg-[#111113] hover:text-[#F8F7F4] text-[#111113] text-xs font-mono transition"
-              >
-                Sophia (Mobile Dev)
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setSearchEmail('tariq.mansoor@arch-cloud.com');
-                  handleRequestOtp('tariq.mansoor@arch-cloud.com');
-                }}
-                className="px-2.5 py-1 border border-[#111113] bg-[#F8F7F4] hover:bg-[#111113] hover:text-[#F8F7F4] text-[#111113] text-xs font-mono transition"
-              >
-                Tariq (Solutions Arch)
-              </button>
-            </div>
           </div>
         )}
 
@@ -307,25 +262,12 @@ export default function CandidateUpdatePage() {
                 Enter 6-Digit One-Time Code
               </h3>
               <p className="font-mono text-xs text-[#111113]/70 uppercase mt-0.5">
-                Sent to: <strong className="text-[#111113]">{candidate.email}</strong>
+                A verification code has been dispatched to: <strong className="text-[#111113]">{candidate.email}</strong>
               </p>
             </div>
 
-            {/* Instant Demo Code Notice */}
-            <div className="p-4 border-2 border-[#111113] bg-[#F8F7F4] font-mono text-xs flex items-center justify-between">
-              <div>
-                <span className="text-[#111113]/60 uppercase text-[10px] font-bold block">One-Time Code:</span>
-                <span className="text-xl font-bold tracking-widest text-[#FF4D00]">
-                  {simulatedOtp}
-                </span>
-              </div>
-              <button
-                type="button"
-                onClick={() => setOtpCode(simulatedOtp)}
-                className="btn-brutalist text-[10px] py-1.5 px-3"
-              >
-                Auto-Fill Code
-              </button>
+            <div className="p-3 border border-[#111113]/20 bg-[#F8F7F4] font-mono text-xs text-[#111113]/75">
+              Please enter the 6-digit code sent to your registered email to unlock and manage your availability.
             </div>
 
             <div className="space-y-4">

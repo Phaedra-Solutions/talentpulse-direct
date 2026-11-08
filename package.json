@@ -28,7 +28,8 @@
     "build": "NODE_ENV=production next build",
     "start": "PORT=3000 next start -p 3000",
     "lint": "eslint .",
-    "clean": "next clean"
+    "clean": "next clean",
+    "reset-admin": "node scripts/generate-admin-hash.mjs"
   },
   "dependencies": {
     "@google/genai": "^2.31.0",

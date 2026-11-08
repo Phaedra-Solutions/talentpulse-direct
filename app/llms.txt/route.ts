@@ -26,8 +26,8 @@ export async function GET() {
 
 ## Public Web Resources
 - [Home Page](${baseUrl}/): Platform overview, vetting statistics, and client success stories.
-- [Candidate Directory](${baseUrl}/candidates): Searchable directory of verified software engineers, filterable by technology and experience level.
-- [Hire Request](${baseUrl}/hire-request): Instant onboarding form for engineering hiring managers to submit team staffing specifications.
+- [Hire Contract Engineers](${baseUrl}/hire): Instant onboarding form for engineering hiring managers to submit team staffing specifications.
+- [Join Talent Pool](${baseUrl}/apply): Application portal for senior software engineers, FDEs, and AI specialists.
 - [Sitemap](${baseUrl}/sitemap.xml): Complete machine-readable XML index of public URLs.
 
 ## Contact & Enterprise Inquiries

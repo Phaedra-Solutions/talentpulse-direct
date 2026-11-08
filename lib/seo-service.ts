@@ -126,23 +126,23 @@ export const DEFAULT_SEO_SETTINGS: SeoSettings = {
   robots_rules: [
     {
       userAgent: '*',
-      allow: ['/', '/candidates', '/candidates/*', '/hire', '/hire-request', '/privacy', '/terms', '/apply', '/llms.txt'],
-      disallow: ['/admin', '/admin/*', '/api/*', '/_next/*']
+      allow: ['/', '/roles/*', '/hire', '/hire-request', '/privacy', '/terms', '/apply', '/llms.txt'],
+      disallow: ['/admin', '/admin/*', '/api/*', '/_next/*', '/candidates', '/candidates/*', '/candidate', '/candidate/*']
     },
     {
       userAgent: 'GPTBot',
       allow: ['/', '/privacy', '/terms', '/llms.txt'],
-      disallow: ['/admin/', '/api/']
+      disallow: ['/admin/', '/api/', '/candidates/', '/candidate/']
     },
     {
       userAgent: 'PerplexityBot',
       allow: ['/', '/privacy', '/terms', '/llms.txt'],
-      disallow: ['/admin/', '/api/']
+      disallow: ['/admin/', '/api/', '/candidates/', '/candidate/']
     },
     {
       userAgent: 'ClaudeBot',
       allow: ['/', '/privacy', '/terms', '/llms.txt'],
-      disallow: ['/admin/', '/api/']
+      disallow: ['/admin/', '/api/', '/candidates/', '/candidate/']
     }
   ]
 };
@@ -161,14 +161,14 @@ export const DEFAULT_PAGE_OVERRIDES: Record<string, PageSeoOverride> = {
   },
   '/candidates': {
     path: '/candidates',
-    title: 'Browse Vetted Tech Talent & Developers | TalentPulse',
-    description: 'Explore verified full-stack, backend, frontend, and AI engineers. Filter by technology stack, experience level, rate, and immediate availability.',
-    keywords: 'developer directory, vetted engineers, hire software engineers, talent roster',
+    title: 'Candidate Directory | TalentPulse Direct',
+    description: 'Internal confidential candidate directory.',
+    keywords: 'candidates',
     canonical_url: 'https://talentpulse.dev/candidates',
-    no_index: false,
-    no_follow: false,
-    h1_heading: 'Vetted Engineers & Technical Leaders',
-    schema_type: 'CollectionPage'
+    no_index: true,
+    no_follow: true,
+    h1_heading: 'Candidates',
+    schema_type: 'WebPage'
   },
   '/hire': {
     path: '/hire',
@@ -227,14 +227,25 @@ export const DEFAULT_PAGE_OVERRIDES: Record<string, PageSeoOverride> = {
   },
   '/candidates/[id]': {
     path: '/candidates/[id]',
-    title: '{Candidate Name} – {Role Title} | TalentPulse Profile',
-    description: 'View verified portfolio, primary skills, years of experience, and availability for contract or full-time placement.',
-    keywords: 'candidate profile, engineer resume, vetted developer',
+    title: 'Candidate Profile | TalentPulse Direct',
+    description: 'Confidential candidate record. Restricted access.',
+    keywords: 'candidate profile',
     canonical_url: 'https://talentpulse.dev/candidates/{id}',
-    no_index: false,
-    no_follow: false,
-    h1_heading: '{Candidate Name} – {Role Title}',
+    no_index: true,
+    no_follow: true,
+    h1_heading: 'Candidate Profile',
     schema_type: 'ProfilePage'
+  },
+  '/candidate/update': {
+    path: '/candidate/update',
+    title: 'Candidate Availability Portal | TalentPulse Direct',
+    description: 'Self-service candidate availability management.',
+    keywords: 'candidate update',
+    canonical_url: 'https://talentpulse.dev/candidate/update',
+    no_index: true,
+    no_follow: true,
+    h1_heading: 'Candidate Availability Portal',
+    schema_type: 'WebPage'
   },
   '/admin': {
     path: '/admin',
@@ -416,7 +427,46 @@ export async function updateSeoSettings(updates: Partial<SeoSettings>): Promise<
     updated_at: new Date().toISOString()
   };
 
-  if (isSupabaseConfigured) {
+  const isServer = typeof window === 'undefined';
+
+  if (isServer) {
+    if (isServerSupabaseConfigured) {
+      const serverClient = getSupabaseServerClient();
+      if (serverClient) {
+        const { error } = await serverClient
+          .from('seo_settings')
+          .upsert(
+            {
+              id: 'main_config',
+              site_name: updated.site_name,
+              title_template: updated.title_template,
+              default_title: updated.default_title,
+              default_meta_description: updated.default_meta_description,
+              default_keywords: updated.default_keywords,
+              canonical_base_url: updated.canonical_base_url,
+              gtm_id: updated.gtm_id,
+              ga_id: updated.ga_id,
+              is_gtm_enabled: Boolean(updated.is_gtm_enabled),
+              og_image_url: updated.og_image_url,
+              og_type: updated.og_type,
+              twitter_card: updated.twitter_card,
+              twitter_handle: updated.twitter_handle,
+              is_indexing_enabled: Boolean(updated.is_indexing_enabled),
+              organization_json: updated.organization_json,
+              faq_items: updated.faq_items,
+              robots_rules: updated.robots_rules,
+              updated_at: updated.updated_at
+            },
+            { onConflict: 'id' }
+          );
+
+        if (error) {
+          console.error('[SEO] Error updating seo_settings in Supabase:', error);
+          throw new Error(`Failed to save SEO settings to database: ${error.message}`);
+        }
+      }
+    }
+  } else if (isSupabaseConfigured) {
     const browserClient = getSupabaseBrowserClient();
     if (browserClient) {
       const { error } = await browserClient
@@ -432,12 +482,12 @@ export async function updateSeoSettings(updates: Partial<SeoSettings>): Promise<
             canonical_base_url: updated.canonical_base_url,
             gtm_id: updated.gtm_id,
             ga_id: updated.ga_id,
-            is_gtm_enabled: updated.is_gtm_enabled,
+            is_gtm_enabled: Boolean(updated.is_gtm_enabled),
             og_image_url: updated.og_image_url,
             og_type: updated.og_type,
             twitter_card: updated.twitter_card,
             twitter_handle: updated.twitter_handle,
-            is_indexing_enabled: updated.is_indexing_enabled,
+            is_indexing_enabled: Boolean(updated.is_indexing_enabled),
             organization_json: updated.organization_json,
             faq_items: updated.faq_items,
             robots_rules: updated.robots_rules,
@@ -447,7 +497,7 @@ export async function updateSeoSettings(updates: Partial<SeoSettings>): Promise<
         );
 
       if (error) {
-        console.error('[SEO] Error updating seo_settings in Supabase:', error);
+        console.error('[SEO] Error updating seo_settings in Supabase (browser):', error);
       }
     }
   }
@@ -470,7 +520,23 @@ export async function upsertPageSeoOverride(override: PageSeoOverride): Promise<
     updated_at: new Date().toISOString()
   };
 
-  if (isSupabaseConfigured) {
+  const isServer = typeof window === 'undefined';
+
+  if (isServer) {
+    if (isServerSupabaseConfigured) {
+      const serverClient = getSupabaseServerClient();
+      if (serverClient) {
+        const { error } = await serverClient
+          .from('page_seo_overrides')
+          .upsert(record, { onConflict: 'path' });
+
+        if (error) {
+          console.error('[SEO] Error upserting page_seo_override in Supabase:', error);
+          throw new Error(`Failed to save page override to database: ${error.message}`);
+        }
+      }
+    }
+  } else if (isSupabaseConfigured) {
     const browserClient = getSupabaseBrowserClient();
     if (browserClient) {
       const { error } = await browserClient
@@ -478,7 +544,7 @@ export async function upsertPageSeoOverride(override: PageSeoOverride): Promise<
         .upsert(record, { onConflict: 'path' });
 
       if (error) {
-        console.error('[SEO] Error upserting page_seo_override in Supabase:', error);
+        console.error('[SEO] Error upserting page_seo_override in Supabase (browser):', error);
       }
     }
   }
@@ -504,7 +570,20 @@ export async function upsertPageSeoOverride(override: PageSeoOverride): Promise<
  * Admin action: Delete page-specific SEO override
  */
 export async function deletePageSeoOverride(path: string): Promise<boolean> {
-  if (isSupabaseConfigured) {
+  const isServer = typeof window === 'undefined';
+
+  if (isServer) {
+    if (isServerSupabaseConfigured) {
+      const serverClient = getSupabaseServerClient();
+      if (serverClient) {
+        const { error } = await serverClient.from('page_seo_overrides').delete().eq('path', path);
+        if (error) {
+          console.error('[SEO] Error deleting page_seo_override in Supabase:', error);
+          throw new Error(`Failed to delete page override from database: ${error.message}`);
+        }
+      }
+    }
+  } else if (isSupabaseConfigured) {
     const browserClient = getSupabaseBrowserClient();
     if (browserClient) {
       await browserClient.from('page_seo_overrides').delete().eq('path', path);

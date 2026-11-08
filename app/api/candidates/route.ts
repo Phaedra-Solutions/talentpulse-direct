@@ -58,6 +58,17 @@ export async function GET(req: NextRequest) {
   const session = getAuthenticatedAdmin(req);
   const isAdmin = Boolean(session && canAccessCandidatePipeline(session.role));
 
+  // Candidates are confidential: unauthenticated public requests cannot list candidates
+  if (!isAdmin && !email) {
+    return NextResponse.json(
+      { 
+        candidates: [], 
+        error: 'Access Denied: Candidate profiles and talent directory are confidential and restricted to authorized administrative personnel.' 
+      },
+      { status: 403 }
+    );
+  }
+
   const supabase = getSupabaseServerClient();
 
   if (supabase && isServerSupabaseConfigured) {
@@ -78,8 +89,8 @@ export async function GET(req: NextRequest) {
     const { data, error } = await query.order('created_at', { ascending: false });
     if (!error && data) {
       let formatted = data.map(fromDbCandidate);
-      // If not authenticated admin and not single candidate lookup, sanitize PII
-      if (!isAdmin && !email) {
+      // If not authenticated admin (candidate self-service email lookup), redact internal notes & phone
+      if (!isAdmin) {
         formatted = formatted.map(sanitizeCandidateForPublic);
       }
       return NextResponse.json({ candidates: formatted, source: 'supabase' });
@@ -101,7 +112,7 @@ export async function GET(req: NextRequest) {
     candidates = candidates.filter(c => c.email.toLowerCase() === email.trim().toLowerCase());
   }
 
-  if (!isAdmin && !email) {
+  if (!isAdmin) {
     candidates = candidates.map(sanitizeCandidateForPublic);
   }
 

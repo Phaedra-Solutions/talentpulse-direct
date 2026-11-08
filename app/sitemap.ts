@@ -1,8 +1,7 @@
 // app/sitemap.ts
 import type { MetadataRoute } from 'next';
 import { getSeoSettings, getPageSeoOverrides } from '@/lib/seo-service';
-import { getSupabaseServerClient, isServerSupabaseConfigured } from '@/lib/supabase/server';
-import { INITIAL_MOCK_CANDIDATES } from '@/lib/mock-data';
+import { getRolesList } from '@/lib/roles-tech-store';
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const settings = await getSeoSettings();
@@ -10,7 +9,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const overrides = await getPageSeoOverrides();
   const now = new Date();
 
-  // Core static public routes
+  // Core static public routes (Strictly excludes all candidate profiles and directories)
   const staticRoutes: MetadataRoute.Sitemap = [
     {
       url: `${baseUrl}/`,
@@ -19,22 +18,16 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       priority: 1.0,
     },
     {
-      url: `${baseUrl}/candidates`,
-      lastModified: now,
-      changeFrequency: 'daily',
-      priority: 0.9,
-    },
-    {
       url: `${baseUrl}/hire`,
       lastModified: now,
       changeFrequency: 'weekly',
-      priority: 0.85,
+      priority: 0.9,
     },
     {
       url: `${baseUrl}/apply`,
       lastModified: now,
       changeFrequency: 'weekly',
-      priority: 0.85,
+      priority: 0.9,
     },
     {
       url: `${baseUrl}/privacy`,
@@ -52,50 +45,43 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       url: `${baseUrl}/llms.txt`,
       lastModified: now,
       changeFrequency: 'weekly',
-      priority: 0.7,
+      priority: 0.6,
     },
   ];
 
-  // Dynamically load candidate profile URLs
-  let candidateEntries: { id: string; updated_at?: string }[] = INITIAL_MOCK_CANDIDATES.map((c) => ({
-    id: c.id,
-    updated_at: c.updated_at,
-  }));
-
-  if (isServerSupabaseConfigured) {
-    try {
-      const serverClient = getSupabaseServerClient();
-      if (serverClient) {
-        const { data, error } = await serverClient
-          .from('candidates')
-          .select('id, updated_at');
-        if (!error && data && data.length > 0) {
-          candidateEntries = data;
-        }
-      }
-    } catch (err) {
-      console.warn('[Sitemap] Failed to fetch candidate IDs from Supabase, using mock fallback', err);
-    }
+  // Dynamic public role tracks (Open specialized engineering tracks)
+  let roleRoutes: MetadataRoute.Sitemap = [];
+  try {
+    const roles = await getRolesList(true);
+    roleRoutes = roles
+      .filter((r) => r.status === 'open')
+      .map((role) => ({
+        url: `${baseUrl}/roles/${role.slug}`,
+        lastModified: role.updated_at ? new Date(role.updated_at) : now,
+        changeFrequency: 'weekly',
+        priority: 0.8,
+      }));
+  } catch (err) {
+    console.warn('[Sitemap] Failed to fetch role tracks for sitemap:', err);
   }
 
-  const candidateRoutes: MetadataRoute.Sitemap = candidateEntries.map((candidate) => ({
-    url: `${baseUrl}/candidates/${candidate.id}`,
-    lastModified: candidate.updated_at ? new Date(candidate.updated_at) : now,
-    changeFrequency: 'weekly',
-    priority: 0.75,
-  }));
-
-  // Exclude routes marked no_index
+  // Exclude routes marked no_index, admin workspace, and any candidate paths
   const noIndexPaths = new Set(
     overrides.filter((o) => o.no_index).map((o) => o.path)
   );
 
-  return [...staticRoutes, ...candidateRoutes].filter((entry) => {
+  return [...staticRoutes, ...roleRoutes].filter((entry) => {
     try {
       const pathname = new URL(entry.url).pathname;
-      return !noIndexPaths.has(pathname) && !pathname.startsWith('/admin');
+      return (
+        !noIndexPaths.has(pathname) &&
+        !pathname.startsWith('/admin') &&
+        !pathname.startsWith('/candidate') &&
+        !pathname.startsWith('/candidates')
+      );
     } catch {
       return true;
     }
   });
 }
+

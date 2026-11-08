@@ -18,32 +18,45 @@ export default async function robots(): Promise<MetadataRoute.Robots> {
     };
   }
 
+  const disallowedPrivatePaths = [
+    '/admin',
+    '/admin/*',
+    '/api/*',
+    '/_next/*',
+    '/candidates',
+    '/candidates/*',
+    '/candidate',
+    '/candidate/*',
+  ];
+
   const configuredRules = settings.robots_rules && settings.robots_rules.length > 0
     ? settings.robots_rules.map((rule) => ({
         userAgent: rule.userAgent,
-        allow: rule.allow,
-        disallow: rule.disallow,
+        allow: (rule.allow || []).filter(
+          (p) => !p.startsWith('/candidate') && !p.startsWith('/candidates')
+        ),
+        disallow: Array.from(new Set([...(rule.disallow || []), ...disallowedPrivatePaths])),
       }))
     : [
         {
           userAgent: '*',
-          allow: ['/', '/candidates', '/candidates/*', '/hire-request', '/llms.txt'],
-          disallow: ['/admin', '/admin/*', '/api/*', '/_next/*'],
+          allow: ['/', '/roles/*', '/hire', '/apply', '/privacy', '/terms', '/llms.txt'],
+          disallow: disallowedPrivatePaths,
         },
         {
           userAgent: 'GPTBot',
-          allow: ['/', '/llms.txt'],
-          disallow: ['/admin/', '/api/'],
+          allow: ['/', '/roles/*', '/hire', '/apply', '/privacy', '/terms', '/llms.txt'],
+          disallow: disallowedPrivatePaths,
         },
         {
           userAgent: 'PerplexityBot',
-          allow: ['/', '/llms.txt'],
-          disallow: ['/admin/', '/api/'],
+          allow: ['/', '/roles/*', '/hire', '/apply', '/privacy', '/terms', '/llms.txt'],
+          disallow: disallowedPrivatePaths,
         },
         {
           userAgent: 'ClaudeBot',
-          allow: ['/', '/llms.txt'],
-          disallow: ['/admin/', '/api/'],
+          allow: ['/', '/roles/*', '/hire', '/apply', '/privacy', '/terms', '/llms.txt'],
+          disallow: disallowedPrivatePaths,
         },
       ];
 

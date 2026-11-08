@@ -15,8 +15,6 @@ export function Navbar() {
 
   const navLinks = [
     { href: '/', label: 'Overview' },
-    { href: '/hire', label: 'Hire Talent' },
-    { href: '/candidate/update', label: 'Candidate Portal' },
   ];
 
   const legalLinks = [

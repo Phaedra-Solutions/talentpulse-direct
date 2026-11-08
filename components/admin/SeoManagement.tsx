@@ -71,14 +71,40 @@ export function SeoManagement({ hrUser }: SeoManagementProps) {
     async function loadData() {
       setIsLoading(true);
       try {
-        const [loadedSettings, loadedOverrides] = await Promise.all([
-          getSeoSettings(),
-          getPageSeoOverrides(),
+        const authHeaders = getAdminAuthHeaders();
+        const [seoRes, pagesRes] = await Promise.all([
+          fetch('/api/admin/seo', { headers: authHeaders, credentials: 'include' }),
+          fetch('/api/admin/seo/pages', { headers: authHeaders, credentials: 'include' }),
         ]);
-        setSettings(loadedSettings);
-        setPageOverrides(loadedOverrides);
-      } catch (err: any) {
-        setErrorMessage('Failed to load SEO configuration from server.');
+
+        if (seoRes.ok) {
+          const seoData = await seoRes.json();
+          if (seoData.settings) {
+            setSettings(seoData.settings);
+          }
+        } else {
+          setSettings(await getSeoSettings());
+        }
+
+        if (pagesRes.ok) {
+          const pagesData = await pagesRes.json();
+          if (Array.isArray(pagesData.pages)) {
+            setPageOverrides(pagesData.pages);
+          }
+        } else {
+          setPageOverrides(await getPageSeoOverrides());
+        }
+      } catch {
+        try {
+          const [loadedSettings, loadedOverrides] = await Promise.all([
+            getSeoSettings(),
+            getPageSeoOverrides(),
+          ]);
+          setSettings(loadedSettings);
+          setPageOverrides(loadedOverrides);
+        } catch {
+          setErrorMessage('Failed to load SEO configuration from server.');
+        }
       } finally {
         setIsLoading(false);
       }
