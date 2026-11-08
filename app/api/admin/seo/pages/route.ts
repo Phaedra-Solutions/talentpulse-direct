@@ -1,5 +1,6 @@
 // app/api/admin/seo/pages/route.ts
 import { NextRequest, NextResponse } from 'next/server';
+import { revalidatePath } from 'next/cache';
 import { getPageSeoOverrides, upsertPageSeoOverride, deletePageSeoOverride, PageSeoOverride } from '@/lib/seo-service';
 import { requireAdminAuth } from '@/lib/auth/server-auth';
 import { canManageSeo } from '@/lib/auth/permissions';
@@ -33,6 +34,13 @@ export async function POST(req: NextRequest) {
     }
 
     const saved = await upsertPageSeoOverride(body);
+
+    // Revalidate Next.js cache for the modified path
+    try {
+      revalidatePath(saved.path);
+      revalidatePath('/', 'layout');
+    } catch {}
+
     return NextResponse.json({
       page: saved,
       success: true,
@@ -61,6 +69,11 @@ export async function DELETE(req: NextRequest) {
     }
 
     await deletePageSeoOverride(path);
+    try {
+      revalidatePath(path);
+      revalidatePath('/', 'layout');
+    } catch {}
+
     return NextResponse.json({
       success: true,
       message: `SEO override for ${path} deleted`,

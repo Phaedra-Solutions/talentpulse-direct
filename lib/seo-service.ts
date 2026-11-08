@@ -1,6 +1,7 @@
 // lib/seo-service.ts
 // Enterprise SEO Data Layer for TalentPulse Next.js App Router
 
+import type { Metadata } from 'next';
 import { getSupabaseBrowserClient, isSupabaseConfigured } from '@/lib/supabase/client';
 import { getSupabaseServerClient, isServerSupabaseConfigured } from '@/lib/supabase/server';
 
@@ -364,8 +365,17 @@ export async function getPageSeoOverrides(): Promise<PageSeoOverride[]> {
             .from('page_seo_overrides')
             .select('*');
 
-          if (!error && data && data.length > 0) {
-            return data;
+          if (!error && Array.isArray(data)) {
+            const map = new Map<string, PageSeoOverride>();
+            Object.values(DEFAULT_PAGE_OVERRIDES).forEach((p) => {
+              const key = (p.path || '').trim().toLowerCase().replace(/\/$/, '') || '/';
+              map.set(key, p);
+            });
+            data.forEach((p) => {
+              const key = (p.path || '').trim().toLowerCase().replace(/\/$/, '') || '/';
+              map.set(key, p);
+            });
+            return Array.from(map.values());
           }
         }
       } catch (err) {
@@ -384,11 +394,21 @@ export async function getPageSeoOverrides(): Promise<PageSeoOverride[]> {
           .from('page_seo_overrides')
           .select('*');
 
-        if (!error && data && data.length > 0) {
+        if (!error && Array.isArray(data)) {
+          const map = new Map<string, PageSeoOverride>();
+          Object.values(DEFAULT_PAGE_OVERRIDES).forEach((p) => {
+            const key = (p.path || '').trim().toLowerCase().replace(/\/$/, '') || '/';
+            map.set(key, p);
+          });
+          data.forEach((p) => {
+            const key = (p.path || '').trim().toLowerCase().replace(/\/$/, '') || '/';
+            map.set(key, p);
+          });
+          const merged = Array.from(map.values());
           try {
-            localStorage.setItem(PAGE_OVERRIDES_STORAGE_KEY, JSON.stringify(data));
+            localStorage.setItem(PAGE_OVERRIDES_STORAGE_KEY, JSON.stringify(merged));
           } catch {}
-          return data;
+          return merged;
         }
       }
     } catch (err) {
@@ -399,7 +419,10 @@ export async function getPageSeoOverrides(): Promise<PageSeoOverride[]> {
   try {
     const cached = localStorage.getItem(PAGE_OVERRIDES_STORAGE_KEY);
     if (cached) {
-      return JSON.parse(cached);
+      const parsed = JSON.parse(cached);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed;
+      }
     }
   } catch {}
 
@@ -407,13 +430,89 @@ export async function getPageSeoOverrides(): Promise<PageSeoOverride[]> {
 }
 
 /**
- * Fetch a single page override by exact path
+ * Fetch a single page override by path with trailing-slash tolerance
  */
-export async function getPageSeoOverride(path: string): Promise<PageSeoOverride | null> {
+export async function getPageSeoOverride(rawPath: string): Promise<PageSeoOverride | null> {
+  const cleanPath = (rawPath || '/').trim().toLowerCase().replace(/\/$/, '') || '/';
   const allOverrides = await getPageSeoOverrides();
-  const match = allOverrides.find((o) => o.path === path);
+  const match = allOverrides.find((o) => {
+    const oPath = (o.path || '').trim().toLowerCase().replace(/\/$/, '') || '/';
+    return oPath === cleanPath;
+  });
   if (match) return match;
-  return DEFAULT_PAGE_OVERRIDES[path] || null;
+  return DEFAULT_PAGE_OVERRIDES[cleanPath] || DEFAULT_PAGE_OVERRIDES[rawPath] || null;
+}
+
+/**
+ * Dynamically constructs Next.js App Router Metadata for any route
+ * incorporating database overrides from /admin/seo and global settings.
+ */
+export async function constructMetadataForPath(
+  path: string,
+  options?: { fallbackTitle?: string; fallbackDescription?: string; fallbackKeywords?: string }
+): Promise<Metadata> {
+  const cleanPath = (path || '/').trim().toLowerCase().replace(/\/$/, '') || '/';
+  const [settings, override] = await Promise.all([
+    getSeoSettings(),
+    getPageSeoOverride(cleanPath),
+  ]);
+
+  const baseUrl = (settings.canonical_base_url || 'https://talentpulse.dev').replace(/\/$/, '');
+  const title = override?.title || options?.fallbackTitle || settings.default_title;
+  const description = override?.description || options?.fallbackDescription || settings.default_meta_description;
+  const keywordsStr = override?.keywords || options?.fallbackKeywords || settings.default_keywords;
+  const keywords = keywordsStr ? keywordsStr.split(',').map((k) => k.trim()).filter(Boolean) : undefined;
+
+  const canonicalUrl = override?.canonical_url || `${baseUrl}${cleanPath === '/' ? '' : cleanPath}`;
+  const ogImageUrl = override?.og_image_url || settings.og_image_url || `${baseUrl}/og-talentpulse.png`;
+
+  const isIndexingAllowed = settings.is_indexing_enabled && !(override?.no_index ?? false);
+  const isFollowingAllowed = settings.is_indexing_enabled && !(override?.no_follow ?? false);
+
+  return {
+    metadataBase: new URL(baseUrl),
+    title: {
+      absolute: title,
+    },
+    description,
+    keywords,
+    alternates: {
+      canonical: canonicalUrl,
+    },
+    robots: {
+      index: isIndexingAllowed,
+      follow: isFollowingAllowed,
+      googleBot: {
+        index: isIndexingAllowed,
+        follow: isFollowingAllowed,
+        'max-video-preview': -1,
+        'max-image-preview': 'large',
+        'max-snippet': -1,
+      },
+    },
+    openGraph: {
+      title,
+      description,
+      url: canonicalUrl,
+      siteName: settings.site_name,
+      images: [
+        {
+          url: ogImageUrl,
+          width: 1200,
+          height: 630,
+          alt: title,
+        },
+      ],
+      type: override?.schema_type === 'Article' ? 'article' : 'website',
+    },
+    twitter: {
+      card: settings.twitter_card || 'summary_large_image',
+      title,
+      description,
+      creator: settings.twitter_handle || '@TalentPulseDev',
+      images: [ogImageUrl],
+    },
+  };
 }
 
 /**
@@ -515,8 +614,11 @@ export async function updateSeoSettings(updates: Partial<SeoSettings>): Promise<
  * Admin action: Upsert page-specific SEO override
  */
 export async function upsertPageSeoOverride(override: PageSeoOverride): Promise<PageSeoOverride> {
+  const normPath = (override.path || '/').trim();
+  const cleanPath = normPath === '/' ? '/' : normPath.replace(/\/$/, '');
   const record: PageSeoOverride = {
     ...override,
+    path: cleanPath,
     updated_at: new Date().toISOString()
   };
 

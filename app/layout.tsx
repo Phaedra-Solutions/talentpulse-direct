@@ -4,6 +4,7 @@ import './globals.css';
 import { getSeoSettings } from '@/lib/seo-service';
 import { GoogleTagManagerHead, GoogleTagManagerBody } from '@/components/seo/GoogleTagManager';
 import { OrganizationJsonLd, WebPageJsonLd } from '@/components/seo/StructuredData';
+import { PageSeoSync } from '@/components/seo/PageSeoSync';
 
 const inter = Inter({
   subsets: ['latin'],
@@ -103,6 +104,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       </head>
       <body suppressHydrationWarning className="bg-[#F8F7F4] text-[#111113] min-h-screen selection:bg-[#FF4D00] selection:text-white font-sans">
         <GoogleTagManagerBody gtmId={settings.gtm_id} isEnabled={settings.is_gtm_enabled} />
+        <PageSeoSync />
         {children}
       </body>
     </html>

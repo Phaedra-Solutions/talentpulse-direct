@@ -1,5 +1,6 @@
 // app/api/admin/seo/route.ts
 import { NextRequest, NextResponse } from 'next/server';
+import { revalidatePath } from 'next/cache';
 import { getSeoSettings, updateSeoSettings, SeoSettings } from '@/lib/seo-service';
 import { requireAdminAuth } from '@/lib/auth/server-auth';
 import { canManageSeo } from '@/lib/auth/permissions';
@@ -26,6 +27,10 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json();
     const updated = await updateSeoSettings(body as Partial<SeoSettings>);
+
+    try {
+      revalidatePath('/', 'layout');
+    } catch {}
 
     return NextResponse.json({
       settings: updated,

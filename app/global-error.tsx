@@ -12,6 +12,21 @@ export default function GlobalError({
   reset: () => void;
 }) {
   useEffect(() => {
+    const isChunkError =
+      error?.name === 'ChunkLoadError' ||
+      error?.message?.includes('ChunkLoadError') ||
+      error?.message?.includes('Loading chunk');
+
+    if (isChunkError && typeof window !== 'undefined') {
+      const lastRetry = sessionStorage.getItem('tp_chunk_retry');
+      const now = Date.now();
+      if (!lastRetry || now - Number(lastRetry) > 8000) {
+        sessionStorage.setItem('tp_chunk_retry', String(now));
+        window.location.reload();
+        return;
+      }
+    }
+
     console.error('Global Error Caught at Root Layout:', error);
   }, [error]);
 

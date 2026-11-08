@@ -18,21 +18,14 @@ import {
   Building2,
   Database
 } from 'lucide-react';
+import { constructMetadataForPath } from '@/lib/seo-service';
 
-export const metadata: Metadata = {
-  title: 'Global Privacy Policy | TalentPulse Direct',
-  description: 'Learn how TalentPulse protects candidate and client data. Fully compliant with EU/UK GDPR, California CCPA/CPRA, and Canadian PIPEDA regulations.',
-  alternates: {
-    canonical: 'https://talentpulse.dev/privacy',
-  },
-  openGraph: {
-    title: 'Global Privacy Policy | TalentPulse Direct',
-    description: 'Learn how TalentPulse protects candidate and client data under GDPR, CCPA/CPRA, and PIPEDA standards.',
-    url: 'https://talentpulse.dev/privacy',
-    siteName: 'TalentPulse Direct',
-    type: 'website',
-  },
-};
+export async function generateMetadata(): Promise<Metadata> {
+  return constructMetadataForPath('/privacy', {
+    fallbackTitle: 'Global Privacy Policy | TalentPulse Direct',
+    fallbackDescription: 'Learn how TalentPulse protects candidate and client data. Fully compliant with EU/UK GDPR, California CCPA/CPRA, and Canadian PIPEDA regulations.',
+  });
+}
 
 export default function PrivacyPolicyPage() {
   const lastUpdated = 'November 3, 2026';

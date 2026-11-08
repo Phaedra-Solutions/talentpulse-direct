@@ -140,6 +140,11 @@ export function SeoManagement({ hrUser }: SeoManagementProps) {
       }
 
       setSettings(data.settings);
+      if (typeof window !== 'undefined') {
+        try {
+          localStorage.setItem('tp_seo_settings_v1', JSON.stringify(data.settings));
+        } catch {}
+      }
       setSaveSuccess('SEO configuration saved and published successfully!');
       setTimeout(() => setSaveSuccess(null), 4000);
     } catch (err: any) {
@@ -172,12 +177,20 @@ export function SeoManagement({ hrUser }: SeoManagementProps) {
 
       setPageOverrides(prev => {
         const idx = prev.findIndex(p => p.path === override.path);
+        let updatedList: PageSeoOverride[];
         if (idx >= 0) {
-          const updated = [...prev];
-          updated[idx] = data.page;
-          return updated;
+          updatedList = [...prev];
+          updatedList[idx] = data.page;
+        } else {
+          updatedList = [...prev, data.page];
         }
-        return [...prev, data.page];
+
+        if (typeof window !== 'undefined') {
+          try {
+            localStorage.setItem('tp_page_seo_overrides_v1', JSON.stringify(updatedList));
+          } catch {}
+        }
+        return updatedList;
       });
 
       setEditingOverride(null);
@@ -207,7 +220,15 @@ export function SeoManagement({ hrUser }: SeoManagementProps) {
       const data = await res.json();
       if (!res.ok || !data.success) throw new Error(data.error || 'Delete failed');
 
-      setPageOverrides(prev => prev.filter(p => p.path !== path));
+      setPageOverrides(prev => {
+        const updated = prev.filter(p => p.path !== path);
+        if (typeof window !== 'undefined') {
+          try {
+            localStorage.setItem('tp_page_seo_overrides_v1', JSON.stringify(updated));
+          } catch {}
+        }
+        return updated;
+      });
       setSaveSuccess(`Deleted override for ${path}.`);
       setTimeout(() => setSaveSuccess(null), 3000);
     } catch (err: any) {

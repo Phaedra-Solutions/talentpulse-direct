@@ -18,20 +18,14 @@ import {
   Lock
 } from 'lucide-react';
 
-export const metadata: Metadata = {
-  title: 'Commercial Terms of Use | TalentPulse Direct',
-  description: 'Enterprise terms governing contractual staffing, 4+ hour timezone overlap, 2-week risk-free trial, non-circumvention, and 100% client intellectual property ownership.',
-  alternates: {
-    canonical: 'https://talentpulse.dev/terms',
-  },
-  openGraph: {
-    title: 'Commercial Terms of Use | TalentPulse Direct',
-    description: 'Enterprise terms governing contractual staffing, 4+ hour timezone overlap, 2-week trial, and client intellectual property ownership.',
-    url: 'https://talentpulse.dev/terms',
-    siteName: 'TalentPulse Direct',
-    type: 'website',
-  },
-};
+import { constructMetadataForPath } from '@/lib/seo-service';
+
+export async function generateMetadata(): Promise<Metadata> {
+  return constructMetadataForPath('/terms', {
+    fallbackTitle: 'Commercial Terms of Use | TalentPulse Direct',
+    fallbackDescription: 'Enterprise terms governing contractual staffing, 4+ hour timezone overlap, 2-week risk-free trial, non-circumvention, and 100% client intellectual property ownership.',
+  });
+}
 
 export default function TermsOfUsePage() {
   const lastUpdated = 'November 3, 2026';

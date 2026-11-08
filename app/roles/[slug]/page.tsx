@@ -12,9 +12,24 @@ import {
   Layers,
   Sparkles
 } from 'lucide-react';
+import type { Metadata } from 'next';
 import { Navbar } from '@/components/Navbar';
 import { MarkdownViewer } from '@/components/MarkdownViewer';
 import { getRoleBySlugOrId } from '@/lib/roles-tech-store';
+import { constructMetadataForPath } from '@/lib/seo-service';
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ slug: string }>;
+}): Promise<Metadata> {
+  const { slug } = await params;
+  const role = await getRoleBySlugOrId(slug);
+  return constructMetadataForPath(`/roles/${slug}`, {
+    fallbackTitle: role ? `${role.title} | TalentPulse Direct` : 'Engineering Track | TalentPulse',
+    fallbackDescription: role ? role.short_description : 'Pre-vetted engineering track overview and contractual placement specs.',
+  });
+}
 
 export default async function RoleDetailPage({
   params,
