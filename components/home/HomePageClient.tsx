@@ -405,7 +405,7 @@ export function HomePageClient() {
               <Twitter className="w-4 h-4" />
             </a>
             <a
-              href="https://github.com/phaedrasolutions"
+              href="https://github.com/Phaedra-Solutions"
               target="_blank"
               rel="noopener noreferrer"
               aria-label="GitHub"
