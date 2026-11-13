@@ -34,7 +34,11 @@ import {
   KeyRound,
   FileText,
   Phone,
-  Sparkles
+  Sparkles,
+  UploadCloud,
+  ExternalLink,
+  FileCheck,
+  Trash2
 } from 'lucide-react';
 
 export default function CandidateUpdatePage() {
@@ -42,6 +46,10 @@ export default function CandidateUpdatePage() {
   const [isSearching, setIsSearching] = useState(false);
   const [candidate, setCandidate] = useState<Candidate | null>(null);
   const [searchError, setSearchError] = useState<string | null>(null);
+
+  // Resume replacement state
+  const [newResumeFileName, setNewResumeFileName] = useState<string | null>(null);
+  const [resumeUploadNotice, setResumeUploadNotice] = useState<string | null>(null);
 
   // Secure Auth State (Email OTP / Magic Link - $0 cost solution)
   const [otpStep, setOtpStep] = useState<'input_email' | 'enter_otp' | 'authenticated'>('input_email');
@@ -149,6 +157,8 @@ export default function CandidateUpdatePage() {
           home_timezone: candidate.home_timezone,
           video_pitch_url: candidate.video_pitch_url || '',
           written_pitch: candidate.written_pitch,
+          resume_url: candidate.resume_url || '',
+          resume_filename: candidate.resume_filename || '',
         });
       } else {
         setOtpError('Invalid verification code. Please check the 6-digit code sent to your email.');
@@ -160,6 +170,34 @@ export default function CandidateUpdatePage() {
     }
   };
 
+  const handleResumeFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 10 * 1024 * 1024) {
+      setResumeUploadNotice('File size exceeds 10MB limit. Please upload a smaller PDF or DOCX file.');
+      return;
+    }
+
+    setNewResumeFileName(file.name);
+    setValue('resume_filename', file.name, { shouldValidate: true });
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const base64Data = event.target?.result as string;
+      setValue('resume_url', base64Data, { shouldValidate: true });
+      setResumeUploadNotice(`Replacement file "${file.name}" staged. Saving will upload to DigitalOcean Spaces and delete old file.`);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleCancelResumeReplacement = () => {
+    setNewResumeFileName(null);
+    setResumeUploadNotice(null);
+    setValue('resume_url', candidate?.resume_url || '', { shouldValidate: true });
+    setValue('resume_filename', candidate?.resume_filename || '', { shouldValidate: true });
+  };
+
   const onUpdateSubmit = async (data: CandidateUpdateFormValues) => {
     if (!candidate) return;
     setIsSaving(true);
@@ -169,6 +207,8 @@ export default function CandidateUpdatePage() {
       const res = await updateCandidateAvailabilityRecord(candidate.email, data);
       if (res.success && res.candidate) {
         setCandidate(res.candidate);
+        setNewResumeFileName(null);
+        setResumeUploadNotice(null);
         setSaveSuccess(true);
         setTimeout(() => setSaveSuccess(false), 4000);
       } else {
@@ -465,6 +505,85 @@ export default function CandidateUpdatePage() {
                   placeholder="https://www.loom.com/share/..."
                   className="w-full font-mono text-xs px-3.5 py-2.5 border-2 border-[#111113] bg-[#F8F7F4] text-[#111113] placeholder:text-[#111113]/40 focus:outline-hidden focus:border-[#FF4D00]"
                 />
+              </div>
+
+              {/* Technical Resume & Storage Replacement */}
+              <div className="border-2 border-[#111113] bg-[#F8F7F4] p-4 sm:p-5 space-y-3">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <label className="block font-mono text-xs uppercase font-bold text-[#111113]">
+                    Technical Resume / CV (DigitalOcean Spaces)
+                  </label>
+                  <span className="font-mono text-[10px] font-bold px-2 py-0.5 border border-[#111113] bg-white text-[#FF4D00]">
+                    [PRIVATE STORAGE]
+                  </span>
+                </div>
+
+                {/* Currently Active Resume */}
+                <div className="p-3 border border-[#111113] bg-white flex flex-col sm:flex-row sm:items-center justify-between gap-3 font-mono text-xs">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <FileText className="w-5 h-5 text-[#FF4D00] shrink-0" />
+                    <div className="min-w-0">
+                      <span className="font-bold text-[#111113] block truncate">
+                        {candidate.resume_filename || (candidate.resume_url ? 'Candidate_Resume.pdf' : 'No resume file attached')}
+                      </span>
+                      <span className="text-[10px] text-[#111113]/60 block uppercase">
+                        {candidate.resume_url 
+                          ? 'Stored securely in Talent Pulse DigitalOcean bucket (Private ACL)' 
+                          : 'Upload your updated resume below to attach to your profile'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {candidate.resume_url && (
+                    <a
+                      href={`/api/candidates/resume?id=${candidate.id}&email=${encodeURIComponent(candidate.email)}&v=${encodeURIComponent(candidate.updated_at || '')}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="btn-brutalist text-xs py-1.5 px-3 flex items-center justify-center gap-1.5 shrink-0 self-start sm:self-auto"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" />
+                      <span>View Current PDF</span>
+                    </a>
+                  )}
+                </div>
+
+                {/* Replacement Upload Trigger */}
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <label className="cursor-pointer btn-brutalist bg-white hover:bg-[#111113] hover:text-[#F8F7F4] text-xs py-2 px-3.5 flex items-center gap-2">
+                      <UploadCloud className="w-4 h-4 text-[#FF4D00]" />
+                      <span>{newResumeFileName ? 'Change Replacement File' : 'Upload Updated Resume (PDF/DOCX)'}</span>
+                      <input
+                        type="file"
+                        accept=".pdf,.docx,.doc"
+                        onChange={handleResumeFileChange}
+                        className="hidden"
+                      />
+                    </label>
+
+                    {newResumeFileName && (
+                      <button
+                        type="button"
+                        onClick={handleCancelResumeReplacement}
+                        className="btn-brutalist border-rose-600 text-rose-700 bg-rose-50 text-xs py-2 px-3 flex items-center gap-1"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Cancel Replacement</span>
+                      </button>
+                    )}
+                  </div>
+
+                  {resumeUploadNotice && (
+                    <div className="p-2.5 border border-[#FF4D00] bg-orange-50/80 font-mono text-[11px] text-[#111113] flex items-center gap-2 animate-in fade-in">
+                      <FileCheck className="w-4 h-4 text-[#FF4D00] shrink-0" />
+                      <span>{resumeUploadNotice}</span>
+                    </div>
+                  )}
+
+                  <p className="font-mono text-[10px] text-[#111113]/60 uppercase leading-relaxed">
+                    Note: Updating your resume will store the new file in <strong className="text-[#111113]">Talent Pulse/{'{Month-Year}'}/candidate/</strong> and automatically purge the previously saved file from DigitalOcean storage. Files are kept private and cannot be accessed publicly.
+                  </p>
+                </div>
               </div>
 
               {/* Written Pitch Update */}

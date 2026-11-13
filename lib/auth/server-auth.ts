@@ -12,7 +12,8 @@ export function getAuthenticatedAdmin(req: NextRequest): AdminSessionPayload | n
   const cookie = req.cookies.get('admin_session')?.value;
   const authHeader = req.headers.get('authorization')?.replace(/^Bearer\s+/i, '');
   const customToken = req.headers.get('x-admin-token');
-  const token = cookie || authHeader || customToken;
+  const queryToken = req.nextUrl?.searchParams?.get('token') || undefined;
+  const token = cookie || authHeader || customToken || queryToken;
 
   if (!token) return null;
   const verified = verifyAdminSessionToken(token);

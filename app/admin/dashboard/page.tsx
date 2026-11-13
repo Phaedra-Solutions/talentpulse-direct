@@ -11,8 +11,7 @@ import {
 } from '@/types/candidate';
 import { 
   getCandidatesList, 
-  updateCandidateStageAndNotesRecord, 
-  resetMockData 
+  updateCandidateStageAndNotesRecord 
 } from '@/lib/candidate-store';
 import * as XLSX from 'xlsx';
 import { 
@@ -42,7 +41,6 @@ import {
   Video, 
   Clock, 
   Cpu, 
-  RotateCcw, 
   Download, 
   Plus, 
   FileText, 
@@ -57,7 +55,12 @@ import {
   X,
   ShieldCheck,
   ChevronDown,
-  Globe
+  Globe,
+  Cloud,
+  UploadCloud,
+  CheckCircle2,
+  RefreshCw,
+  Settings
 } from 'lucide-react';
 
 function AdminDashboardContent() {
@@ -67,9 +70,33 @@ function AdminDashboardContent() {
   const [rawCandidates, setRawCandidates] = useState<Candidate[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isLiveSupabase, setIsLiveSupabase] = useState(false);
-  const [viewMode, setViewMode] = useState<'table' | 'kanban'>('table');
+  const [viewMode, setViewMode] = useState<'table' | 'cards' | 'kanban'>('table');
+  const [currentPage, setCurrentPage] = useState(1);
   const [selectedCandidate, setSelectedCandidate] = useState<Candidate | null>(null);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+
+  // DigitalOcean Spaces Resume Storage & Migration State
+  const [showMigrationModal, setShowMigrationModal] = useState(false);
+  const [isMigratingResumes, setIsMigratingResumes] = useState(false);
+  const [migrationResult, setMigrationResult] = useState<any>(null);
+  const [migrationError, setMigrationError] = useState<string | null>(null);
+
+  const [storageConfig, setStorageConfig] = useState({
+    endpoint: 'https://nyc3.digitaloceanspaces.com',
+    region: 'nyc3',
+    bucket: 'talent-pulse-storage',
+    accessKey: '',
+    secretKey: '',
+  });
+  const [isConfiguredSpaces, setIsConfiguredSpaces] = useState(false);
+  const [storedStorageMeta, setStoredStorageMeta] = useState<{
+    accessKeyMasked?: string;
+    hasAccessKey?: boolean;
+    hasSecretKey?: boolean;
+  }>({});
+  const [isLoadingStorageConfig, setIsLoadingStorageConfig] = useState(false);
+  const [isSavingStorageConfig, setIsSavingStorageConfig] = useState(false);
+  const [configFeedback, setConfigFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   // Filters State
   const [filters, setFilters] = useState<CandidateFilters>({
@@ -123,12 +150,127 @@ function AdminDashboardContent() {
       const { candidates: data, isLiveSupabase: live } = await getCandidatesList();
       setRawCandidates(data);
       setIsLiveSupabase(live);
+      setSelectedCandidate((prev) => (prev ? data.find((c) => c.id === prev.id) || prev : null));
     } catch (err) {
       console.error(err);
     } finally {
       setIsLoading(false);
     }
   };
+
+  const handleRunMigration = async () => {
+    setIsMigratingResumes(true);
+    setMigrationError(null);
+    setMigrationResult(null);
+    try {
+      const { getAdminAuthHeaders } = await import('@/lib/auth/recruiter-auth');
+      const res = await fetch('/api/admin/migrate-resumes', {
+        method: 'POST',
+        headers: { ...getAdminAuthHeaders() },
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setMigrationResult(data);
+        await reloadCandidates();
+      } else {
+        setMigrationError(data.error || 'Failed to execute migration');
+      }
+    } catch (err: any) {
+      setMigrationError(err.message || 'Migration network error');
+    } finally {
+      setIsMigratingResumes(false);
+    }
+  };
+
+  const fetchStorageConfig = async () => {
+    setIsLoadingStorageConfig(true);
+    try {
+      const { getAdminAuthHeaders } = await import('@/lib/auth/recruiter-auth');
+      const res = await fetch('/api/admin/storage-config', {
+        headers: { ...getAdminAuthHeaders() },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setIsConfiguredSpaces(data.isConfigured);
+        if (data.config) {
+          setStorageConfig(prev => ({
+            ...prev,
+            endpoint: data.config.endpoint || prev.endpoint,
+            region: data.config.region || prev.region,
+            bucket: data.config.bucket || prev.bucket,
+            accessKey: '', // Kept empty so user can leave blank to retain active key
+            secretKey: '', // Kept empty so user can leave blank to retain active secret
+          }));
+          setStoredStorageMeta({
+            accessKeyMasked: data.config.accessKeyMasked || '',
+            hasAccessKey: Boolean(data.config.hasAccessKey),
+            hasSecretKey: Boolean(data.config.hasSecretKey),
+          });
+        }
+      }
+    } catch (err) {
+      console.warn('Failed loading storage config:', err);
+    } finally {
+      setIsLoadingStorageConfig(false);
+    }
+  };
+
+  const handleSaveStorageConfig = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    setIsSavingStorageConfig(true);
+    setConfigFeedback(null);
+    try {
+      const { getAdminAuthHeaders } = await import('@/lib/auth/recruiter-auth');
+      const res = await fetch('/api/admin/storage-config', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...getAdminAuthHeaders(),
+        },
+        body: JSON.stringify(storageConfig),
+      });
+      const data = await res.json();
+      if (data.success && data.testResult?.success) {
+        setConfigFeedback({
+          type: 'success',
+          message: data.testResult.message || 'Connected & configuration saved successfully!',
+        });
+        setIsConfiguredSpaces(true);
+        // Refresh masked state and reset input buffers
+        await fetchStorageConfig();
+      } else if (data.success) {
+        setConfigFeedback({
+          type: 'error',
+          message: `Connection test failed — credentials were not saved: ${data.testResult?.message || 'Bucket unreachable'}`,
+        });
+        setIsConfiguredSpaces(data.isConfigured || false);
+      } else {
+        setConfigFeedback({
+          type: 'error',
+          message: data.error || 'Failed saving configuration',
+        });
+      }
+    } catch (err: any) {
+      setConfigFeedback({
+        type: 'error',
+        message: err.message || 'Network error while contacting storage config API',
+      });
+    } finally {
+      setIsSavingStorageConfig(false);
+    }
+  };
+
+
+  useEffect(() => {
+    const handleResizeError = (e: ErrorEvent) => {
+      if (e.message?.includes('ResizeObserver')) {
+        e.stopImmediatePropagation();
+        e.preventDefault();
+      }
+    };
+    window.addEventListener('error', handleResizeError);
+    return () => window.removeEventListener('error', handleResizeError);
+  }, []);
 
   useEffect(() => {
     if (!isAuthorized) return;
@@ -222,6 +364,109 @@ function AdminDashboardContent() {
     return list;
   }, [rawCandidates, filters]);
 
+  // Pagination parameters: 20 records per page for both Table and Card views
+  const PAGE_SIZE = 20;
+  const totalCandidates = candidates.length;
+  const totalPages = Math.max(1, Math.ceil(totalCandidates / PAGE_SIZE));
+  const safeCurrentPage = Math.min(currentPage, totalPages);
+  const startIndex = (safeCurrentPage - 1) * PAGE_SIZE;
+
+  // Reset pagination to page 1 whenever any filter changes (render-time adjustment)
+  const [prevFilters, setPrevFilters] = useState(filters);
+  if (prevFilters !== filters) {
+    setPrevFilters(filters);
+    setCurrentPage(1);
+  }
+
+  const paginatedCandidates = useMemo(() => {
+    return candidates.slice(startIndex, startIndex + PAGE_SIZE);
+  }, [candidates, startIndex]);
+
+  const renderPagination = () => {
+    if (totalCandidates === 0) return null;
+
+    const startRecord = startIndex + 1;
+    const endRecord = Math.min(startIndex + PAGE_SIZE, totalCandidates);
+
+    // Build page numbers array with intelligent ellipsis
+    const pageItems: (number | string)[] = [];
+    if (totalPages <= 7) {
+      for (let i = 1; i <= totalPages; i++) pageItems.push(i);
+    } else {
+      pageItems.push(1);
+      if (safeCurrentPage > 3) {
+        pageItems.push('ellipsis-start');
+      }
+      const start = Math.max(2, safeCurrentPage - 1);
+      const end = Math.min(totalPages - 1, safeCurrentPage + 1);
+      for (let i = start; i <= end; i++) {
+        pageItems.push(i);
+      }
+      if (safeCurrentPage < totalPages - 2) {
+        pageItems.push('ellipsis-end');
+      }
+      pageItems.push(totalPages);
+    }
+
+    return (
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-4 bg-white border-2 border-[#111113] shadow-[4px_4px_0px_0px_#111113] font-mono text-xs">
+        <div className="text-[#111113]/80 font-medium">
+          Showing <span className="font-bold text-[#FF4D00]">[{startRecord}–{endRecord}]</span> of{' '}
+          <span className="font-bold text-[#111113]">{totalCandidates}</span> dossiers{' '}
+          <span className="text-[#111113]/50 text-[11px]">(20 per page)</span>
+        </div>
+
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <button
+            type="button"
+            onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+            disabled={safeCurrentPage === 1}
+            className="px-3 py-1.5 border-2 border-[#111113] uppercase font-bold text-xs bg-white text-[#111113] hover:bg-[#111113] hover:text-[#F8F7F4] transition disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-white disabled:hover:text-[#111113]"
+            title="Previous page"
+          >
+            ← Prev
+          </button>
+
+          {pageItems.map((item, idx) => {
+            if (typeof item === 'string') {
+              return (
+                <span key={`item-${idx}`} className="px-2 py-1 text-[#111113]/50 select-none">
+                  …
+                </span>
+              );
+            }
+            const isCurrent = item === safeCurrentPage;
+            return (
+              <button
+                key={`page-${item}`}
+                type="button"
+                onClick={() => setCurrentPage(item)}
+                className={`min-w-[32px] py-1.5 px-2.5 border-2 border-[#111113] font-bold text-xs transition ${
+                  isCurrent
+                    ? 'bg-[#111113] text-[#F8F7F4] shadow-[2px_2px_0px_0px_#FF4D00]'
+                    : 'bg-white text-[#111113] hover:bg-[#F8F7F4]'
+                }`}
+                title={`Go to page ${item}`}
+              >
+                {item}
+              </button>
+            );
+          })}
+
+          <button
+            type="button"
+            onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+            disabled={safeCurrentPage === totalPages}
+            className="px-3 py-1.5 border-2 border-[#111113] uppercase font-bold text-xs bg-white text-[#111113] hover:bg-[#111113] hover:text-[#F8F7F4] transition disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-white disabled:hover:text-[#111113]"
+            title="Next page"
+          >
+            Next →
+          </button>
+        </div>
+      </div>
+    );
+  };
+
   // KPI Analytics Header Calculations (from raw pool)
   const kpis = useMemo(() => {
     const total = rawCandidates.length;
@@ -254,13 +499,6 @@ function AdminDashboardContent() {
     }));
   };
 
-  // Reset to initial mock dataset
-  const handleResetData = () => {
-    if (confirm('Reset talent pipeline to initial mock engineers?')) {
-      resetMockData();
-      reloadCandidates();
-    }
-  };
 
   const handleSignOut = async () => {
     await signOutHrRecruiter();
@@ -517,6 +755,22 @@ function AdminDashboardContent() {
               </Link>
             )}
 
+            {/* Resume Storage Migration: Visible to Admin */}
+            {canManageAdminUsers(hrUser.role) && (
+              <button
+                type="button"
+                onClick={() => {
+                  setShowMigrationModal(true);
+                  fetchStorageConfig();
+                }}
+                className="btn-brutalist text-xs py-2 sm:py-1.5 px-3 flex items-center gap-1.5 shrink-0 min-h-[44px] sm:min-h-0 bg-blue-50 text-blue-900 border-blue-900 hover:bg-blue-100"
+                title="Manage DigitalOcean Spaces resume bucket & migration"
+              >
+                <Cloud className="w-3.5 h-3.5 text-blue-700 shrink-0" />
+                <span>Resume Storage</span>
+              </button>
+            )}
+
             <Link
               href="/admin/change-password"
               className="btn-brutalist text-xs py-2 sm:py-1.5 px-3 flex items-center gap-1.5 shrink-0 min-h-[44px] sm:min-h-0"
@@ -525,15 +779,6 @@ function AdminDashboardContent() {
               <KeyRound className="w-3.5 h-3.5 shrink-0" />
               <span>Password</span>
             </Link>
-
-            <button
-              onClick={handleResetData}
-              title="Reset sample candidate dataset"
-              className="btn-brutalist text-xs py-2 sm:py-1.5 px-3 shrink-0 min-h-[44px] sm:min-h-0"
-            >
-              <RotateCcw className="w-3 h-3 shrink-0" />
-              <span>Reset</span>
-            </button>
 
             {/* Bulk Candidate Export: Available to HR Executives & Admins. Hidden for Sales Executives */}
             {canExportCandidateData(hrUser.role) ? (
@@ -639,24 +884,42 @@ function AdminDashboardContent() {
             {/* View Mode Toggle */}
             <div className="flex items-center gap-1 font-mono text-xs">
               <button
+                type="button"
                 onClick={() => setViewMode('table')}
-                className={`px-3 py-2 border-2 border-[#111113] uppercase font-bold transition ${
+                className={`px-3 py-2 border-2 border-[#111113] uppercase font-bold transition flex items-center gap-1.5 ${
                   viewMode === 'table'
                     ? 'bg-[#111113] text-[#F8F7F4]'
                     : 'bg-white text-[#111113] hover:bg-[#F8F7F4]'
                 }`}
+                title="Tabular candidate directory"
               >
-                Table View
+                <TableIcon className="w-3.5 h-3.5" />
+                <span>Table</span>
               </button>
               <button
+                type="button"
+                onClick={() => setViewMode('cards')}
+                className={`px-3 py-2 border-2 border-[#111113] uppercase font-bold transition flex items-center gap-1.5 ${
+                  viewMode === 'cards'
+                    ? 'bg-[#111113] text-[#F8F7F4]'
+                    : 'bg-white text-[#111113] hover:bg-[#F8F7F4]'
+                }`}
+                title="Card dossier grid"
+              >
+                <LayoutGrid className="w-3.5 h-3.5" />
+                <span>Cards</span>
+              </button>
+              <button
+                type="button"
                 onClick={() => setViewMode('kanban')}
-                className={`px-3 py-2 border-2 border-[#111113] uppercase font-bold transition ${
+                className={`px-3 py-2 border-2 border-[#111113] uppercase font-bold transition flex items-center gap-1.5 ${
                   viewMode === 'kanban'
                     ? 'bg-[#111113] text-[#F8F7F4]'
                     : 'bg-white text-[#111113] hover:bg-[#F8F7F4]'
                 }`}
+                title="Pipeline stages board"
               >
-                Kanban
+                <span>Kanban</span>
               </button>
             </div>
           </div>
@@ -771,20 +1034,49 @@ function AdminDashboardContent() {
           </div>
         </div>
 
-        {/* Content Area: Table View or Kanban View */}
-        {viewMode === 'table' ? (
-          <CandidateTable
-            candidates={candidates}
-            onSelectCandidate={(c) => {
-              setSelectedCandidate(c);
-              setIsDrawerOpen(true);
-            }}
-            onQuickStageChange={handleStageChange}
-            sortBy={filters.sortBy}
-            sortOrder={filters.sortOrder}
-            onSortChange={handleSortChange}
-          />
-        ) : (
+        {/* Content Area: Table View, Cards View, or Kanban View */}
+        {viewMode === 'table' && (
+          <div className="space-y-4">
+            <CandidateTable
+              candidates={paginatedCandidates}
+              onSelectCandidate={(c) => {
+                setSelectedCandidate(c);
+                setIsDrawerOpen(true);
+              }}
+              onQuickStageChange={handleStageChange}
+              sortBy={filters.sortBy}
+              sortOrder={filters.sortOrder}
+              onSortChange={handleSortChange}
+            />
+            {renderPagination()}
+          </div>
+        )}
+
+        {viewMode === 'cards' && (
+          <div className="space-y-4">
+            {paginatedCandidates.length === 0 ? (
+              <div className="p-12 text-center font-mono text-xs text-[#111113]/60 uppercase border-2 border-[#111113] bg-white shadow-[4px_4px_0px_0px_#111113]">
+                [No candidates matched current search and filter parameters]
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                {paginatedCandidates.map((c) => (
+                  <CandidateCard
+                    key={c.id}
+                    candidate={c}
+                    onSelect={(cand) => {
+                      setSelectedCandidate(cand);
+                      setIsDrawerOpen(true);
+                    }}
+                  />
+                ))}
+              </div>
+            )}
+            {renderPagination()}
+          </div>
+        )}
+
+        {viewMode === 'kanban' && (
           /* Kanban Board */
           <div className="grid grid-cols-1 md:grid-cols-5 gap-4 overflow-x-auto pb-4">
             {kanbanStages.map((stage) => {
@@ -832,6 +1124,310 @@ function AdminDashboardContent() {
           </div>
         )}
       </main>
+
+      {/* DigitalOcean Spaces Resume Storage & Transfer Modal */}
+      {showMigrationModal && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-[#111113]/80 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-[#F8F7F4] border-2 border-[#111113] shadow-[8px_8px_0px_0px_#111113] max-w-2xl w-full p-6 sm:p-8 space-y-5 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-start justify-between border-b-2 border-[#111113] pb-4">
+              <div>
+                <span className="font-mono text-[10px] uppercase font-bold text-[#FF4D00] block mb-1">
+                  [DIGITALOCEAN SPACES OBJECT STORAGE]
+                </span>
+                <h2 className="font-syne font-extrabold text-2xl text-[#111113]">
+                  Candidate Resume Migration &amp; Storage
+                </h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowMigrationModal(false)}
+                className="p-1.5 border border-[#111113] hover:bg-[#111113] hover:text-[#F8F7F4] transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4 font-mono text-xs max-h-[75vh] overflow-y-auto pr-1">
+              {/* Credentials & Connection Configuration Panel */}
+              <div className="p-3.5 border-2 border-[#111113] bg-white space-y-3">
+                <div className="flex items-center justify-between border-b border-[#111113]/20 pb-2">
+                  <div className="flex items-center gap-2">
+                    <Cloud className="w-4 h-4 text-blue-700" />
+                    <span className="font-bold text-[#111113] text-xs uppercase">Spaces Connection Settings</span>
+                  </div>
+                  <span className={`text-[10px] px-2 py-0.5 border font-bold ${
+                    isConfiguredSpaces 
+                      ? 'bg-emerald-100 text-emerald-900 border-emerald-700' 
+                      : 'bg-amber-100 text-amber-900 border-amber-700'
+                  }`}>
+                    {isConfiguredSpaces ? '● BUCKET CONFIGURED' : '○ SIMULATED / LOCAL CACHE'}
+                  </span>
+                </div>
+
+                <form onSubmit={handleSaveStorageConfig} className="space-y-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[10px] uppercase font-bold text-[#111113]/70 mb-1">
+                        Bucket Name
+                      </label>
+                      <input
+                        type="text"
+                        value={storageConfig.bucket}
+                        onChange={(e) => setStorageConfig({ ...storageConfig, bucket: e.target.value })}
+                        placeholder="talent-pulse-storage"
+                        className="w-full bg-[#F8F7F4] border border-[#111113] px-2.5 py-1.5 font-mono text-xs focus:outline-none focus:ring-1 focus:ring-[#FF4D00]"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] uppercase font-bold text-[#111113]/70 mb-1">
+                        Region
+                      </label>
+                      <input
+                        type="text"
+                        value={storageConfig.region}
+                        onChange={(e) => setStorageConfig({ ...storageConfig, region: e.target.value })}
+                        placeholder="nyc3"
+                        className="w-full bg-[#F8F7F4] border border-[#111113] px-2.5 py-1.5 font-mono text-xs focus:outline-none focus:ring-1 focus:ring-[#FF4D00]"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-[10px] uppercase font-bold text-[#111113]/70">
+                        Endpoint URL
+                      </label>
+                      <span className="text-[9px] text-[#111113]/60 font-mono">
+                        Regional domain only
+                      </span>
+                    </div>
+                    <input
+                      type="text"
+                      value={storageConfig.endpoint}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setStorageConfig(prev => {
+                          let ep = val.trim();
+                          let reg = prev.region;
+                          const b = prev.bucket.toLowerCase().trim();
+                          if (b && ep.toLowerCase().includes(`${b}.`)) {
+                            ep = ep.replace(new RegExp(`https?://${b}\\.`, 'i'), 'https://');
+                          }
+                          const doMatch = ep.match(/([a-z0-9-]+)\.digitaloceanspaces\.com/i);
+                          if (doMatch && doMatch[1]) {
+                            reg = doMatch[1].toLowerCase();
+                          }
+                          return { ...prev, endpoint: val, region: reg };
+                        });
+                      }}
+                      onBlur={() => {
+                        setStorageConfig(prev => {
+                          let ep = prev.endpoint.trim();
+                          const b = prev.bucket.toLowerCase().trim();
+                          if (b && ep.toLowerCase().includes(`${b}.`)) {
+                            ep = ep.replace(new RegExp(`https?://${b}\\.`, 'i'), 'https://');
+                          }
+                          const doMatch = ep.match(/([a-z0-9-]+)\.digitaloceanspaces\.com/i);
+                          let reg = prev.region;
+                          if (doMatch && doMatch[1]) {
+                            reg = doMatch[1].toLowerCase();
+                            ep = `https://${reg}.digitaloceanspaces.com`;
+                          }
+                          return { ...prev, endpoint: ep, region: reg };
+                        });
+                      }}
+                      placeholder="https://sgp1.digitaloceanspaces.com"
+                      className="w-full bg-[#F8F7F4] border border-[#111113] px-2.5 py-1.5 font-mono text-xs focus:outline-none focus:ring-1 focus:ring-[#FF4D00]"
+                    />
+                    <p className="text-[9px] text-[#111113]/60 mt-1">
+                      Always use the regional endpoint (e.g. <code>https://sgp1.digitaloceanspaces.com</code>). Do not include the bucket name prefix.
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="block text-[10px] uppercase font-bold text-[#111113]/70">
+                          Access Key (DO_SPACES_KEY)
+                        </label>
+                        {storedStorageMeta.accessKeyMasked && (
+                          <span className="text-[9px] font-mono text-[#FF4D00]">
+                            Active: {storedStorageMeta.accessKeyMasked}
+                          </span>
+                        )}
+                      </div>
+                      <input
+                        type="text"
+                        value={storageConfig.accessKey}
+                        onChange={(e) => setStorageConfig({ ...storageConfig, accessKey: e.target.value })}
+                        placeholder={
+                          storedStorageMeta.accessKeyMasked
+                            ? `Keep active (${storedStorageMeta.accessKeyMasked})`
+                            : 'DO00EXAMPLEKEY...'
+                        }
+                        className="w-full bg-[#F8F7F4] border border-[#111113] px-2.5 py-1.5 font-mono text-xs focus:outline-none focus:ring-1 focus:ring-[#FF4D00]"
+                      />
+                    </div>
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="block text-[10px] uppercase font-bold text-[#111113]/70">
+                          Secret Key (DO_SPACES_SECRET)
+                        </label>
+                        {storedStorageMeta.hasSecretKey && (
+                          <span className="text-[9px] font-mono text-emerald-600 font-bold">
+                            Key Saved
+                          </span>
+                        )}
+                      </div>
+                      <input
+                        type="password"
+                        value={storageConfig.secretKey}
+                        onChange={(e) => setStorageConfig({ ...storageConfig, secretKey: e.target.value })}
+                        placeholder={
+                          storedStorageMeta.hasSecretKey
+                            ? '•••••••••••••••• (leave blank to keep unchanged)'
+                            : 'Enter Spaces Secret Key'
+                        }
+                        className="w-full bg-[#F8F7F4] border border-[#111113] px-2.5 py-1.5 font-mono text-xs focus:outline-none focus:ring-1 focus:ring-[#FF4D00]"
+                      />
+                    </div>
+                  </div>
+
+                  {configFeedback && (
+                    <div className={`p-2.5 border text-[11px] flex items-center gap-2 ${
+                      configFeedback.type === 'success' 
+                        ? 'bg-emerald-50 text-emerald-950 border-emerald-600' 
+                        : 'bg-rose-50 text-rose-950 border-rose-600'
+                    }`}>
+                      {configFeedback.type === 'success' ? (
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                      ) : (
+                        <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                      )}
+                      <span>{configFeedback.message}</span>
+                    </div>
+                  )}
+
+                  <div className="flex justify-end pt-1">
+                    <button
+                      type="submit"
+                      disabled={isSavingStorageConfig || isLoadingStorageConfig}
+                      className="btn-brutalist text-xs py-1.5 px-3 flex items-center gap-1.5 bg-[#111113] text-[#F8F7F4] hover:bg-[#FF4D00] disabled:opacity-50"
+                    >
+                      {isSavingStorageConfig ? (
+                        <>
+                          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                          <span>Testing &amp; Saving...</span>
+                        </>
+                      ) : (
+                        <>
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          <span>Test Connection &amp; Save Credentials</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </form>
+              </div>
+
+              {/* Path & Storage Specification */}
+              <div className="p-3.5 border-2 border-[#111113] bg-white space-y-2">
+                <div className="flex items-center justify-between text-[11px] font-bold">
+                  <span className="text-[#111113]">Storage Path Hierarchy:</span>
+                  <span className="text-emerald-700">[PRIVATE ACL ENFORCED]</span>
+                </div>
+                <div className="bg-[#F8F7F4] p-2 border border-[#111113]/30 font-mono text-[11px] text-[#111113] select-all">
+                  Talent Pulse/{'{Month-Year}'}/candidate/{'{candidateId}_{filename}'}
+                </div>
+                <p className="text-[10px] text-[#111113]/70 uppercase leading-relaxed">
+                  Resumes are stored privately in DigitalOcean Spaces. Direct public URL access is prohibited; all files are authenticated via Talent Pulse system routes. Updating a resume deletes the old file automatically.
+                </p>
+              </div>
+
+              {migrationResult && (
+                <div className={`p-4 border-2 space-y-3 animate-in fade-in ${
+                  migrationResult.errorCount > 0 || !migrationResult.success
+                    ? 'border-amber-700 bg-amber-50 text-amber-950'
+                    : 'border-emerald-700 bg-emerald-50 text-emerald-950'
+                }`}>
+                  <div className={`flex items-center gap-2 font-bold text-xs ${
+                    migrationResult.errorCount > 0 || !migrationResult.success ? 'text-amber-900' : 'text-emerald-800'
+                  }`}>
+                    {migrationResult.errorCount > 0 || !migrationResult.success ? (
+                      <AlertTriangle className="w-4 h-4 text-amber-700" />
+                    ) : (
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                    )}
+                    <span>
+                      {migrationResult.errorCount > 0 || !migrationResult.success
+                        ? 'Migration Completed With Errors'
+                        : 'Migration Execution Complete'}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center text-[11px]">
+                    <div className="p-2 bg-white border border-[#111113]/20">
+                      <span className="block text-[#111113]/70 text-[10px] uppercase">Scanned</span>
+                      <strong className="text-sm">{migrationResult.totalScanned}</strong>
+                    </div>
+                    <div className="p-2 bg-white border border-[#111113]/20">
+                      <span className="block text-[#111113]/70 text-[10px] uppercase">Migrated</span>
+                      <strong className="text-sm text-emerald-800">{migrationResult.migratedCount}</strong>
+                    </div>
+                    <div className="p-2 bg-white border border-[#111113]/20">
+                      <span className="block text-[#111113]/70 text-[10px] uppercase">In Spaces</span>
+                      <strong className="text-sm">{migrationResult.alreadyInSpacesCount}</strong>
+                    </div>
+                    <div className="p-2 bg-white border border-[#111113]/20">
+                      <span className="block text-[#111113]/70 text-[10px] uppercase">Errors</span>
+                      <strong className="text-sm text-rose-700">{migrationResult.errorCount}</strong>
+                    </div>
+                  </div>
+
+                  {migrationResult.logs && migrationResult.logs.length > 0 && (
+                    <div className="max-h-40 overflow-y-auto p-2 bg-black text-emerald-400 font-mono text-[10px] border border-[#111113] space-y-1">
+                      {migrationResult.logs.map((log: string, idx: number) => (
+                        <div key={idx} className="whitespace-pre-wrap">{log}</div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {migrationError && (
+                <div className="p-3.5 border-2 border-rose-600 bg-rose-50 text-rose-950 flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                  <span>{migrationError}</span>
+                </div>
+              )}
+            </div>
+
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-3 border-t-2 border-[#111113] font-mono text-xs">
+              <span className="text-[10px] text-[#111113]/60 uppercase">
+                CLI command: <code className="font-bold text-[#111113]">npm run migrate:resumes</code>
+              </span>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowMigrationModal(false)}
+                  className="btn-brutalist py-2.5 px-4"
+                >
+                  Close
+                </button>
+                <button
+                  type="button"
+                  onClick={handleRunMigration}
+                  disabled={isMigratingResumes}
+                  className="btn-brutalist btn-brutalist-primary py-2.5 px-4 flex items-center justify-center gap-2 disabled:opacity-50"
+                >
+                  <UploadCloud className="w-4 h-4" />
+                  <span>{isMigratingResumes ? 'TRANSFERRING RESUMES...' : 'EXECUTE RESUME TRANSFER'}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Candidate Dossier Side-Drawer */}
       <CandidateDetailDrawer

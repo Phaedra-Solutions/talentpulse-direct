@@ -440,25 +440,56 @@ export async function createRoleRecord(data: {
     currentMappings = [...currentMappings, ...newMappings];
   }
 
+  // If in browser, dispatch through authenticated admin API endpoint
+  if (typeof window !== 'undefined') {
+    try {
+      const { getAdminAuthHeaders } = await import('./auth/recruiter-auth');
+      const res = await fetch('/api/roles', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...getAdminAuthHeaders(),
+        },
+        body: JSON.stringify(data),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        throw new Error(json.error || 'Failed to create role');
+      }
+      localStorage.setItem(ROLES_STORAGE_KEY, JSON.stringify(updatedRoles));
+      localStorage.setItem(ROLE_TECHS_STORAGE_KEY, JSON.stringify(currentMappings));
+      return json.role;
+    } catch (apiErr: any) {
+      if (apiErr.message && !apiErr.message.includes('fetch')) {
+        throw apiErr;
+      }
+    }
+  }
+
   const supabase = getSupabaseClient();
   if (supabase) {
-    try {
-      await supabase.from('roles').insert([{
-        id: newRole.id,
-        slug: newRole.slug,
-        title: newRole.title,
-        short_description: newRole.short_description,
-        description: newRole.description,
-        status: newRole.status,
-        display_order: newRole.display_order,
-        created_at: newRole.created_at,
-        updated_at: newRole.updated_at,
-      }]);
-      if (newMappings.length > 0) {
-        await supabase.from('role_technologies').insert(newMappings);
+    const { error: insertErr } = await supabase.from('roles').insert([{
+      id: newRole.id,
+      slug: newRole.slug,
+      title: newRole.title,
+      short_description: newRole.short_description,
+      description: newRole.description,
+      status: newRole.status,
+      display_order: newRole.display_order,
+      created_at: newRole.created_at,
+      updated_at: newRole.updated_at,
+    }]);
+
+    if (insertErr) {
+      console.error('Supabase role insert error:', insertErr);
+      throw new Error(`Database error creating role: ${insertErr.message}`);
+    }
+
+    if (newMappings.length > 0) {
+      const { error: mapErr } = await supabase.from('role_technologies').insert(newMappings);
+      if (mapErr) {
+        console.warn('Supabase role_technologies insert warning:', mapErr);
       }
-    } catch (e) {
-      console.warn('Supabase role insert warning:', e);
     }
   }
 
@@ -518,32 +549,58 @@ export async function updateRoleRecord(
     }
   }
 
+  // If in browser, dispatch through authenticated admin API endpoint
+  if (typeof window !== 'undefined') {
+    try {
+      const { getAdminAuthHeaders } = await import('./auth/recruiter-auth');
+      const res = await fetch(`/api/roles/${existing.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          ...getAdminAuthHeaders(),
+        },
+        body: JSON.stringify(data),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        throw new Error(json.error || 'Failed to update role');
+      }
+      localStorage.setItem(ROLES_STORAGE_KEY, JSON.stringify(allRoles));
+      return json.role;
+    } catch (apiErr: any) {
+      if (apiErr.message && !apiErr.message.includes('fetch')) {
+        throw apiErr;
+      }
+    }
+  }
+
   const supabase = getSupabaseClient();
   if (supabase) {
-    try {
-      await supabase.from('roles').update({
-        title: updatedRole.title,
-        slug: updatedRole.slug,
-        short_description: updatedRole.short_description,
-        description: updatedRole.description,
-        status: updatedRole.status,
-        display_order: updatedRole.display_order,
-        updated_at: updatedRole.updated_at,
-      }).eq('id', existing.id);
+    const { error: updateErr } = await supabase.from('roles').update({
+      title: updatedRole.title,
+      slug: updatedRole.slug,
+      short_description: updatedRole.short_description,
+      description: updatedRole.description,
+      status: updatedRole.status,
+      display_order: updatedRole.display_order,
+      updated_at: updatedRole.updated_at,
+    }).eq('id', existing.id);
 
-      if (Array.isArray(data.technology_ids)) {
-        await supabase.from('role_technologies').delete().eq('role_id', existing.id);
-        if (data.technology_ids.length > 0) {
-          const rows = data.technology_ids.map(techId => ({
-            role_id: existing.id,
-            technology_id: techId,
-            is_featured: false,
-          }));
-          await supabase.from('role_technologies').insert(rows);
-        }
+    if (updateErr) {
+      console.error('Supabase role update error:', updateErr);
+      throw new Error(`Database error updating role: ${updateErr.message}`);
+    }
+
+    if (Array.isArray(data.technology_ids)) {
+      await supabase.from('role_technologies').delete().eq('role_id', existing.id);
+      if (data.technology_ids.length > 0) {
+        const rows = data.technology_ids.map(techId => ({
+          role_id: existing.id,
+          technology_id: techId,
+          is_featured: false,
+        }));
+        await supabase.from('role_technologies').insert(rows);
       }
-    } catch (e) {
-      console.warn('Supabase role update warning:', e);
     }
   }
 
@@ -595,6 +652,28 @@ export async function deleteRoleRecord(id: string): Promise<{ success: boolean; 
     };
   }
 
+  // If in browser, dispatch through authenticated admin API endpoint
+  if (typeof window !== 'undefined') {
+    try {
+      const { getAdminAuthHeaders } = await import('./auth/recruiter-auth');
+      const res = await fetch(`/api/roles/${role.id}`, {
+        method: 'DELETE',
+        headers: {
+          ...getAdminAuthHeaders(),
+        },
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        return { success: false, error: json.error || 'Failed to delete role' };
+      }
+      return { success: true };
+    } catch (apiErr: any) {
+      if (apiErr.message && !apiErr.message.includes('fetch')) {
+        return { success: false, error: apiErr.message };
+      }
+    }
+  }
+
   let allRoles = await getRolesList(true);
   allRoles = allRoles.filter(r => r.id !== role.id);
 
@@ -605,11 +684,11 @@ export async function deleteRoleRecord(id: string): Promise<{ success: boolean; 
 
   const supabase = getSupabaseClient();
   if (supabase) {
-    try {
-      await supabase.from('role_technologies').delete().eq('role_id', role.id);
-      await supabase.from('roles').delete().eq('id', role.id);
-    } catch (e) {
-      console.warn('Supabase role delete warning:', e);
+    await supabase.from('role_technologies').delete().eq('role_id', role.id);
+    const { error: delErr } = await supabase.from('roles').delete().eq('id', role.id);
+    if (delErr) {
+      console.error('Supabase role delete error:', delErr);
+      return { success: false, error: delErr.message };
     }
   }
 
@@ -910,30 +989,56 @@ export async function updateTechnologyRecord(
     }
   }
 
+  // If in browser, dispatch through authenticated admin API endpoint
+  if (typeof window !== 'undefined') {
+    try {
+      const { getAdminAuthHeaders } = await import('./auth/recruiter-auth');
+      const res = await fetch(`/api/technologies/${id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          ...getAdminAuthHeaders(),
+        },
+        body: JSON.stringify(data),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        throw new Error(json.error || 'Failed to update technology');
+      }
+      localStorage.setItem(TECHS_STORAGE_KEY, JSON.stringify(allTechs));
+      return json.technology;
+    } catch (apiErr: any) {
+      if (apiErr.message && !apiErr.message.includes('fetch')) {
+        throw apiErr;
+      }
+    }
+  }
+
   const supabase = getSupabaseClient();
   if (supabase) {
-    try {
-      await supabase.from('technologies').update({
-        name: updated.name,
-        slug: updated.slug,
-        status: updated.status,
-        is_featured: updated.is_featured,
-        updated_at: updated.updated_at,
-      }).eq('id', id);
+    const { error: techErr } = await supabase.from('technologies').update({
+      name: updated.name,
+      slug: updated.slug,
+      status: updated.status,
+      is_featured: updated.is_featured,
+      updated_at: updated.updated_at,
+    }).eq('id', id);
 
-      if (Array.isArray(data.role_ids)) {
-        await supabase.from('role_technologies').delete().eq('technology_id', id);
-        if (data.role_ids.length > 0) {
-          const rows = data.role_ids.map(roleId => ({
-            role_id: roleId,
-            technology_id: id,
-            is_featured: updated.is_featured,
-          }));
-          await supabase.from('role_technologies').insert(rows);
-        }
+    if (techErr) {
+      console.error('Supabase technology update error:', techErr);
+      throw new Error(`Database error updating technology: ${techErr.message}`);
+    }
+
+    if (Array.isArray(data.role_ids)) {
+      await supabase.from('role_technologies').delete().eq('technology_id', id);
+      if (data.role_ids.length > 0) {
+        const rows = data.role_ids.map(roleId => ({
+          role_id: roleId,
+          technology_id: id,
+          is_featured: updated.is_featured,
+        }));
+        await supabase.from('role_technologies').insert(rows);
       }
-    } catch (e) {
-      console.warn('Supabase technology update warning:', e);
     }
   }
 
@@ -983,6 +1088,28 @@ export async function deleteTechnologyRecord(id: string): Promise<{ success: boo
     };
   }
 
+  // If in browser, dispatch through authenticated admin API endpoint
+  if (typeof window !== 'undefined') {
+    try {
+      const { getAdminAuthHeaders } = await import('./auth/recruiter-auth');
+      const res = await fetch(`/api/technologies/${id}`, {
+        method: 'DELETE',
+        headers: {
+          ...getAdminAuthHeaders(),
+        },
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        return { success: false, error: json.error || 'Failed to delete technology' };
+      }
+      return { success: true };
+    } catch (apiErr: any) {
+      if (apiErr.message && !apiErr.message.includes('fetch')) {
+        return { success: false, error: apiErr.message };
+      }
+    }
+  }
+
   const filteredTechs = allTechs.filter(t => t.id !== id);
 
   let currentMappings: RoleTechnology[] = typeof window !== 'undefined'
@@ -992,11 +1119,11 @@ export async function deleteTechnologyRecord(id: string): Promise<{ success: boo
 
   const supabase = getSupabaseClient();
   if (supabase) {
-    try {
-      await supabase.from('role_technologies').delete().eq('technology_id', id);
-      await supabase.from('technologies').delete().eq('id', id);
-    } catch (e) {
-      console.warn('Supabase technology delete warning:', e);
+    await supabase.from('role_technologies').delete().eq('technology_id', id);
+    const { error: delErr } = await supabase.from('technologies').delete().eq('id', id);
+    if (delErr) {
+      console.error('Supabase technology delete error:', delErr);
+      return { success: false, error: delErr.message };
     }
   }
 
@@ -1009,18 +1136,4 @@ export async function deleteTechnologyRecord(id: string): Promise<{ success: boo
   }
 
   return { success: true };
-}
-
-/**
- * Reset Roles and Tech store to initial seed data
- */
-export function resetRolesAndTechData(): void {
-  if (typeof window !== 'undefined') {
-    localStorage.setItem(ROLES_STORAGE_KEY, JSON.stringify(INITIAL_ROLES));
-    localStorage.setItem(TECHS_STORAGE_KEY, JSON.stringify(INITIAL_TECHNOLOGIES));
-    localStorage.setItem(ROLE_TECHS_STORAGE_KEY, JSON.stringify(INITIAL_ROLE_TECH_MAPPINGS));
-  }
-  serverRoles = [...INITIAL_ROLES];
-  serverTechs = [...INITIAL_TECHNOLOGIES];
-  serverRoleTechs = [...INITIAL_ROLE_TECH_MAPPINGS];
 }

@@ -140,6 +140,8 @@ export const candidateUpdateSchema = z.object({
   home_timezone: z.string().min(1, 'Please select your timezone'),
   video_pitch_url: z.string().url('Must be a valid URL').optional().or(z.literal('')),
   written_pitch: z.string().min(20, 'Pitch must be at least 20 characters'),
+  resume_url: z.string().optional().or(z.literal('')),
+  resume_filename: z.string().max(255).optional().or(z.literal('')),
 });
 
 export type CandidateUpdateFormValues = z.infer<typeof candidateUpdateSchema>;

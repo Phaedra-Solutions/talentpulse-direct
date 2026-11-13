@@ -12,7 +12,6 @@ import {
   getHireRequestsList,
   updateHireRequestStatusAndNotes,
   deleteHireRequest,
-  resetMockHireRequests,
 } from '@/lib/hire-request-store';
 import {
   getCurrentHrUser,
@@ -43,7 +42,6 @@ import {
   Cpu,
   KeyRound,
   Download,
-  RotateCcw,
   Edit3,
   Trash2,
   X,
@@ -194,14 +192,6 @@ export default function AdminHireRequestsPage() {
     }
   };
 
-  // Handle reset sample data
-  const handleReset = async () => {
-    if (confirm('Reset client hire requests to default demonstration records?')) {
-      const resetData = await resetMockHireRequests();
-      setRequests(resetData);
-      setActiveRequest(null);
-    }
-  };
 
   // Export CSV
   const handleExportCSV = () => {
@@ -359,14 +349,6 @@ export default function AdminHireRequestsPage() {
               </Link>
             )}
 
-            <button
-              onClick={handleReset}
-              title="Reset sample client hire requests"
-              className="btn-brutalist text-xs py-2 sm:py-1.5 px-3 shrink-0 min-h-[44px] sm:min-h-0 flex items-center gap-1.5"
-            >
-              <RotateCcw className="w-3 h-3 shrink-0" />
-              <span>Reset</span>
-            </button>
 
             {/* Export Button: Available to Admin, Hidden/Restricted for Sales Executive */}
             {canExportHireRequests(hrUser.role) ? (

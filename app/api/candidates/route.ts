@@ -4,6 +4,28 @@ import { candidateApplicationSchema, Candidate } from '@/types/candidate';
 import { INITIAL_MOCK_CANDIDATES } from '@/lib/mock-data';
 import { getAuthenticatedAdmin, requireAdminAuth } from '@/lib/auth/server-auth';
 import { canAccessCandidatePipeline } from '@/lib/auth/permissions';
+import { 
+  uploadResumeToSpaces, 
+  deleteResumeFromSpaces, 
+  buildResumeStorageKey 
+} from '@/lib/storage/do-spaces';
+
+function parseBase64FileData(dataUri: string): { buffer: Buffer; mimeType: string } | null {
+  if (!dataUri || typeof dataUri !== 'string' || !dataUri.startsWith('data:')) return null;
+  const commaIndex = dataUri.indexOf(',');
+  if (commaIndex === -1) return null;
+  const header = dataUri.slice(0, commaIndex);
+  const base64Data = dataUri.slice(commaIndex + 1).replace(/\s/g, '');
+  const mimeMatch = header.match(/^data:([^;]+)/);
+  const mimeType = mimeMatch ? mimeMatch[1] : 'application/pdf';
+  try {
+    const buffer = Buffer.from(base64Data, 'base64');
+    return { buffer, mimeType };
+  } catch (err) {
+    console.warn('Failed to parse base64 data URI:', err);
+    return null;
+  }
+}
 
 function sanitizeCandidateForPublic(c: Candidate): Candidate {
   return {
@@ -71,8 +93,40 @@ export async function GET(req: NextRequest) {
 
   const supabase = getSupabaseServerClient();
 
+  // Columns necessary to fill candidate table and card views
+  const SUMMARY_COLUMNS = [
+    'id',
+    'created_at',
+    'updated_at',
+    'full_name',
+    'email',
+    'phone_number',
+    'linkedin_url',
+    'github_url',
+    'portfolio_url',
+    'resume_url',
+    'resume_filename',
+    'primary_role',
+    'work_modes',
+    'home_timezone',
+    'target_timezones',
+    'overlap_hours_per_day',
+    'availability_status',
+    'available_from',
+    'english_proficiency',
+    'written_pitch',
+    'video_pitch_url',
+    'tech_stack',
+    'pipeline_stage',
+    'internal_notes',
+    'contractual_agreement_accepted',
+  ].join(',');
+
+  const isSummary = searchParams.get('summary') !== 'false';
+  const selectQuery = isSummary ? SUMMARY_COLUMNS : '*';
+
   if (supabase && isServerSupabaseConfigured) {
-    let query = supabase.from('candidates').select('*');
+    let query = supabase.from('candidates').select(selectQuery);
     if (primaryRole && primaryRole !== 'all') {
       if (primaryRole === 'solutions_architect') {
         query = query.or('primary_role.eq.solutions_architect,internal_notes.ilike.%[Role: solutions_architect]%');
@@ -85,6 +139,16 @@ export async function GET(req: NextRequest) {
     if (availabilityStatus && availabilityStatus !== 'all') query = query.eq('availability_status', availabilityStatus);
     if (pipelineStage && pipelineStage !== 'all') query = query.eq('pipeline_stage', pipelineStage);
     if (email) query = query.ilike('email', email.trim().toLowerCase());
+
+    const limitParam = searchParams.get('limit');
+    const pageParam = searchParams.get('page');
+    if (limitParam) {
+      const limit = parseInt(limitParam, 10);
+      const page = pageParam ? parseInt(pageParam, 10) : 1;
+      const from = (page - 1) * limit;
+      const to = from + limit - 1;
+      query = query.range(from, to);
+    }
 
     const { data, error } = await query.order('created_at', { ascending: false });
     if (!error && data) {
@@ -123,9 +187,33 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const validated = candidateApplicationSchema.parse(body);
+    const candidateId = crypto.randomUUID();
+
+    let resumeStorageKey = validated.resume_url;
+    if (validated.resume_url && validated.resume_url.startsWith('data:')) {
+      const parsed = parseBase64FileData(validated.resume_url);
+      if (parsed) {
+        const uploadRes = await uploadResumeToSpaces({
+          fileBuffer: parsed.buffer,
+          filename: validated.resume_filename || 'Candidate_Resume.pdf',
+          contentType: parsed.mimeType,
+          candidateId,
+        });
+        if (uploadRes.success) {
+          resumeStorageKey = uploadRes.storageKey;
+        } else {
+          return NextResponse.json(
+            { error: `Failed to store resume in DigitalOcean Spaces: ${uploadRes.error || 'Upload failed'}` },
+            { status: 502 }
+          );
+        }
+      }
+    }
 
     const candidateData = {
       ...validated,
+      id: candidateId,
+      resume_url: resumeStorageKey,
       overlap_hours_per_day: Number(validated.overlap_hours_per_day),
       consent_timestamp: new Date().toISOString(),
       created_at: new Date().toISOString(),
@@ -171,7 +259,6 @@ export async function POST(req: NextRequest) {
     // Return created payload in demo mode
     return NextResponse.json({
       candidate: {
-        id: crypto.randomUUID(),
         ...candidateData,
       },
       source: 'demo_memory',
@@ -200,6 +287,49 @@ export async function PATCH(req: NextRequest) {
     }
 
     const supabase = getSupabaseServerClient();
+
+    // Look up existing candidate to handle resume deletion/replacement
+    let existingCandidate: any = null;
+    if (supabase && isServerSupabaseConfigured) {
+      let q = supabase.from('candidates').select('*');
+      if (id) q = q.eq('id', id);
+      else if (email) q = q.ilike('email', email.trim().toLowerCase());
+      const { data } = await q.maybeSingle();
+      existingCandidate = data;
+    } else {
+      existingCandidate = INITIAL_MOCK_CANDIDATES.find(c => 
+        (id && c.id === id) || (email && c.email.toLowerCase() === email.trim().toLowerCase())
+      );
+    }
+
+    const targetCandId = existingCandidate?.id || id || crypto.randomUUID();
+    const oldResumeKey = existingCandidate?.resume_url;
+
+    // Handle resume replacement or deletion
+    if (updates.resume_url && updates.resume_url.startsWith('data:')) {
+      const parsed = parseBase64FileData(updates.resume_url);
+      if (parsed) {
+        const uploadRes = await uploadResumeToSpaces({
+          fileBuffer: parsed.buffer,
+          filename: updates.resume_filename || existingCandidate?.resume_filename || 'Candidate_Resume.pdf',
+          contentType: parsed.mimeType,
+          candidateId: targetCandId,
+          oldResumeKey, // Automatically deletes old file from DigitalOcean Spaces
+        });
+        if (uploadRes.success) {
+          updates.resume_url = uploadRes.storageKey;
+        } else {
+          return NextResponse.json(
+            { error: `Failed to store replacement resume in DigitalOcean Spaces: ${uploadRes.error || 'Upload failed'}` },
+            { status: 502 }
+          );
+        }
+      }
+    } else if (updates.resume_url === '' && oldResumeKey && oldResumeKey.startsWith('Talent Pulse/')) {
+      // Resume removed: delete old file from DO Spaces
+      await deleteResumeFromSpaces(oldResumeKey);
+    }
+
     if (supabase && isServerSupabaseConfigured) {
       const payload: any = {
         ...updates,
@@ -231,8 +361,8 @@ export async function PATCH(req: NextRequest) {
 
     return NextResponse.json({
       candidate: {
-        id: id || crypto.randomUUID(),
-        email: email || '',
+        id: targetCandId,
+        email: email || existingCandidate?.email || '',
         ...updates,
         updated_at: new Date().toISOString(),
       },

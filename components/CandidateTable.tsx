@@ -17,10 +17,11 @@ import {
   Eye, 
   Mail, 
   Briefcase, 
-  GitBranch,
-  Phone,
-  FileText
+  GitBranch, 
+  Phone, 
+  FileText 
 } from 'lucide-react';
+import { useCurrentHrUser } from '@/lib/auth/recruiter-auth';
 
 interface CandidateTableProps {
   candidates: Candidate[];
@@ -39,6 +40,7 @@ export function CandidateTable({
   sortOrder,
   onSortChange,
 }: CandidateTableProps) {
+  const hrUser = useCurrentHrUser();
   return (
     <div className="overflow-x-auto border-2 border-[#111113] bg-white shadow-[4px_4px_0px_0px_#111113]">
       <table className="w-full text-left text-xs">
@@ -205,13 +207,17 @@ export function CandidateTable({
                   {/* Resume / CV */}
                   <td className="py-3.5 px-4 font-mono">
                     {c.resume_url ? (
-                      <button
-                        onClick={() => onSelectCandidate(c)}
+                      <a
+                        href={`/api/candidates/resume?id=${c.id}&email=${encodeURIComponent(c.email)}${hrUser?.token ? `&token=${encodeURIComponent(hrUser.token)}` : ''}&v=${encodeURIComponent(c.updated_at || '')}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={(e) => e.stopPropagation()}
                         className="inline-flex items-center gap-1 text-[11px] text-[#111113] font-bold hover:text-[#FF4D00] border border-[#111113] px-2 py-0.5 bg-white"
+                        title="View Resume in Talent Pulse"
                       >
                         <FileText className="w-3 h-3 text-[#FF4D00]" />
                         <span className="truncate max-w-[90px]">[PDF]</span>
-                      </button>
+                      </a>
                     ) : (
                       <span className="text-[#111113]/40 text-[10px]">[NONE]</span>
                     )}

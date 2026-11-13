@@ -16,11 +16,9 @@ import {
   deleteRoleRecord,
   getTechnologiesList,
   updateTechnologyRecord,
-  deleteTechnologyRecord,
-  getCandidateCountForRole,
-  getCandidateCountForTech,
-  resetRolesAndTechData
+  deleteTechnologyRecord
 } from '@/lib/roles-tech-store';
+import { getCandidatesList } from '@/lib/candidate-store';
 import { 
   getCurrentHrUser, 
   useCurrentHrUser,
@@ -29,7 +27,8 @@ import {
   canManageRolesAndTech,
   canAccessHireRequests,
   canManageAdminUsers,
-  getRoleBadgeInfo
+  getRoleBadgeInfo,
+  getAdminAuthHeaders
 } from '@/lib/auth/recruiter-auth';
 import { Navbar } from '@/components/Navbar';
 import { RichTextEditor } from '@/components/RichTextEditor';
@@ -43,7 +42,6 @@ import {
   XCircle, 
   AlertCircle, 
   ExternalLink, 
-  RotateCcw, 
   ArrowLeft, 
   Check, 
   X, 
@@ -90,27 +88,55 @@ export default function AdminRolesManagementPage() {
     setTimeout(() => setNotification(null), 6000);
   };
 
+  const computeCountsInMemory = (
+    fetchedRoles: Role[],
+    fetchedTechs: Technology[],
+    allCandidates: Array<{ primary_role?: string; tech_stack?: string[] }>
+  ) => {
+    const rCounts: Record<string, number> = {};
+    for (const r of fetchedRoles) {
+      const slugNorm = r.slug.toLowerCase();
+      rCounts[r.id] = allCandidates.filter((c) => {
+        const pr = (c.primary_role || '').toLowerCase();
+        return pr === slugNorm || pr === slugNorm.replace(/-/g, '_');
+      }).length;
+    }
+
+    const tCounts: Record<string, number> = {};
+    for (const t of fetchedTechs) {
+      const techNorm = t.name.toLowerCase().trim();
+      tCounts[t.id] = allCandidates.filter(
+        (c) => Array.isArray(c.tech_stack) && c.tech_stack.some((s) => s.toLowerCase().trim() === techNorm)
+      ).length;
+    }
+
+    return { rCounts, tCounts };
+  };
+
   const loadAllData = useCallback(async () => {
     setIsLoading(true);
     try {
-      const fetchedRoles = await getRolesList(true);
-      const fetchedTechs = await getTechnologiesList({ status: 'all' });
+      const authHeaders = getAdminAuthHeaders();
+      const [rolesRes, techsRes, candidatesRes] = await Promise.all([
+        fetch('/api/roles?includeClosed=true', { headers: authHeaders }),
+        fetch('/api/technologies?status=all', { headers: authHeaders }),
+        getCandidatesList(),
+      ]);
+      const rolesJson = await rolesRes.json();
+      const techsJson = await techsRes.json();
+
+      const fetchedRoles: Role[] = rolesJson.success && Array.isArray(rolesJson.roles)
+        ? rolesJson.roles
+        : await getRolesList(true);
+      const fetchedTechs: Technology[] = techsJson.success && Array.isArray(techsJson.technologies)
+        ? techsJson.technologies
+        : await getTechnologiesList({ status: 'all' });
 
       setRoles(fetchedRoles);
       setTechnologies(fetchedTechs);
 
-      // Compute candidate counts for each role
-      const rCounts: Record<string, number> = {};
-      for (const r of fetchedRoles) {
-        rCounts[r.id] = await getCandidateCountForRole(r.slug);
-      }
+      const { rCounts, tCounts } = computeCountsInMemory(fetchedRoles, fetchedTechs, candidatesRes.candidates || []);
       setRoleCandidateCounts(rCounts);
-
-      // Compute candidate counts for techs
-      const tCounts: Record<string, number> = {};
-      for (const t of fetchedTechs) {
-        tCounts[t.id] = await getCandidateCountForTech(t.name);
-      }
       setTechCandidateCounts(tCounts);
     } catch (err: any) {
       showNotice('error', `Failed to load data: ${err.message}`);
@@ -131,33 +157,46 @@ export default function AdminRolesManagementPage() {
   useEffect(() => {
     if (!hrUser || !canManageRolesAndTech(hrUser.role)) return;
     let isCancelled = false;
-    Promise.all([
-      getRolesList(true),
-      getTechnologiesList({ status: 'all' })
-    ]).then(async ([fetchedRoles, fetchedTechs]) => {
-      if (isCancelled) return;
-      setRoles(fetchedRoles);
-      setTechnologies(fetchedTechs);
 
-      const rCounts: Record<string, number> = {};
-      for (const r of fetchedRoles) {
-        rCounts[r.id] = await getCandidateCountForRole(r.slug);
-      }
-      if (isCancelled) return;
-      setRoleCandidateCounts(rCounts);
+    async function fetchData() {
+      setIsLoading(true);
+      try {
+        const authHeaders = getAdminAuthHeaders();
+        const [rolesRes, techsRes, candidatesRes] = await Promise.all([
+          fetch('/api/roles?includeClosed=true', { headers: authHeaders }),
+          fetch('/api/technologies?status=all', { headers: authHeaders }),
+          getCandidatesList(),
+        ]);
+        const rolesJson = await rolesRes.json();
+        const techsJson = await techsRes.json();
+        if (isCancelled) return;
 
-      const tCounts: Record<string, number> = {};
-      for (const t of fetchedTechs) {
-        tCounts[t.id] = await getCandidateCountForTech(t.name);
+        const fetchedRoles: Role[] = rolesJson.success && Array.isArray(rolesJson.roles)
+          ? rolesJson.roles
+          : await getRolesList(true);
+        const fetchedTechs: Technology[] = techsJson.success && Array.isArray(techsJson.technologies)
+          ? techsJson.technologies
+          : await getTechnologiesList({ status: 'all' });
+        if (isCancelled) return;
+
+        setRoles(fetchedRoles);
+        setTechnologies(fetchedTechs);
+
+        const { rCounts, tCounts } = computeCountsInMemory(fetchedRoles, fetchedTechs, candidatesRes.candidates || []);
+        setRoleCandidateCounts(rCounts);
+        setTechCandidateCounts(tCounts);
+      } catch (err: any) {
+        if (!isCancelled) {
+          showNotice('error', `Failed to load data: ${err.message}`);
+        }
+      } finally {
+        if (!isCancelled) {
+          setIsLoading(false);
+        }
       }
-      if (isCancelled) return;
-      setTechCandidateCounts(tCounts);
-      setIsLoading(false);
-    }).catch((err) => {
-      if (isCancelled) return;
-      showNotice('error', `Failed to load data: ${err.message}`);
-      setIsLoading(false);
-    });
+    }
+
+    fetchData();
 
     return () => {
       isCancelled = true;
@@ -356,14 +395,6 @@ export default function AdminRolesManagementPage() {
     }
   };
 
-  // Reset to initial seed
-  const handleResetToDefault = () => {
-    if (confirm('Reset Roles & Technologies to initial seed configuration?')) {
-      resetRolesAndTechData();
-      loadAllData();
-      showNotice('success', 'Reset to initial roles and technologies.');
-    }
-  };
 
   const pendingTechs = technologies.filter(t => t.status === 'pending');
   const approvedTechs = technologies.filter(t => t.status === 'approved');
@@ -485,14 +516,6 @@ export default function AdminRolesManagementPage() {
               <Plus className="w-3.5 h-3.5 shrink-0" />
               <span>New Technology</span>
             </button>
-
-            <button
-              onClick={handleResetToDefault}
-              title="Reset roles and tech to default seed"
-              className="btn-brutalist text-xs py-2 sm:py-1.5 px-2.5 shrink-0 min-h-[44px] sm:min-h-0 flex items-center justify-center"
-            >
-              <RotateCcw className="w-3 h-3 shrink-0" />
-            </button>
           </div>
         </div>
 
@@ -566,15 +589,18 @@ export default function AdminRolesManagementPage() {
                   >
                     <div className="space-y-3">
                       <div className="flex items-center justify-between">
-                        <span
-                          className={`font-mono text-[10px] uppercase font-bold px-2 py-0.5 border ${
+                        <button
+                          type="button"
+                          onClick={() => handleToggleRoleStatus(role)}
+                          className={`font-mono text-[10px] uppercase font-bold px-2 py-0.5 border cursor-pointer hover:opacity-80 transition ${
                             isOpen
-                              ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
-                              : 'bg-zinc-100 text-zinc-700 border-zinc-300'
+                              ? 'bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100'
+                              : 'bg-zinc-100 text-zinc-700 border-zinc-300 hover:bg-zinc-200'
                           }`}
+                          title={isOpen ? 'Click to close role (moves to Future Tracks)' : 'Click to open role (moves to Active Tracks)'}
                         >
                           {isOpen ? '● Open Track' : '○ Closed (Future)'}
-                        </span>
+                        </button>
 
                         <span className="font-mono text-[10px] text-[#111113]/60 uppercase">
                           Slug: {role.slug}

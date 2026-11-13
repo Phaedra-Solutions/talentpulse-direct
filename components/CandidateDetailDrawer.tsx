@@ -21,12 +21,13 @@ import {
   PlayCircle, 
   CheckCircle2, 
   Save, 
-  FileText,
-  Shield,
-  Send,
-  Copy,
-  Check
+  FileText, 
+  Shield, 
+  Send, 
+  Copy, 
+  Check 
 } from 'lucide-react';
+import { useCurrentHrUser } from '@/lib/auth/recruiter-auth';
 
 interface CandidateDetailDrawerProps {
   candidate: Candidate | null;
@@ -41,6 +42,7 @@ export function CandidateDetailDrawer({
   onClose,
   onStageChange,
 }: CandidateDetailDrawerProps) {
+  const hrUser = useCurrentHrUser();
   const [currentStage, setCurrentStage] = useState<PipelineStage>('new');
   const [internalNotes, setInternalNotes] = useState('');
   const [isSaving, setIsSaving] = useState(false);
@@ -295,23 +297,35 @@ export function CandidateDetailDrawer({
             <div className="font-mono text-xs uppercase tracking-widest text-[#FF4D00] font-bold mb-2 flex items-center justify-between">
               <span>[TECHNICAL RESUME / ARTIFACT]</span>
               {candidate.resume_url && (
-                <span className="text-emerald-700 font-bold">[PDF ATTACHED]</span>
+                <span className={candidate.resume_url.startsWith('Talent Pulse/') ? 'text-emerald-700 font-bold' : 'text-amber-700 font-bold'}>
+                  {candidate.resume_url.startsWith('Talent Pulse/') ? '[SPACES PRIVATE OBJECT]' : '[LEGACY URL ATTACHED]'}
+                </span>
               )}
             </div>
 
             {candidate.resume_url ? (
-              <div className="p-4 border-2 border-[#111113] bg-white flex items-center justify-between">
-                <div className="truncate">
+              <div className="p-4 border-2 border-[#111113] bg-white flex items-center justify-between gap-3">
+                <div className="min-w-0 flex-1">
                   <span className="font-mono text-xs font-bold text-[#111113] block truncate">
                     {candidate.resume_filename || 'Candidate_Resume.pdf'}
                   </span>
-                  <span className="font-mono text-[10px] text-[#111113]/60 uppercase">
-                    Direct candidate dossier attachment
-                  </span>
+                  {candidate.resume_url.startsWith('Talent Pulse/') ? (
+                    <span className="font-mono text-[10px] text-emerald-700 block truncate mt-0.5" title={candidate.resume_url}>
+                      DO SPACES [PRIVATE]: {candidate.resume_url}
+                    </span>
+                  ) : candidate.resume_url.startsWith('data:') ? (
+                    <span className="font-mono text-[10px] text-amber-700 uppercase block mt-0.5">
+                      Legacy Base64 Payload (Pending Spaces Transfer)
+                    </span>
+                  ) : (
+                    <span className="font-mono text-[10px] text-amber-700 block truncate mt-0.5" title={candidate.resume_url}>
+                      LEGACY URL (Pending Transfer): {candidate.resume_url}
+                    </span>
+                  )}
                 </div>
 
                 <a
-                  href={candidate.resume_url}
+                  href={`/api/candidates/resume?id=${candidate.id}&email=${encodeURIComponent(candidate.email)}${hrUser?.token ? `&token=${encodeURIComponent(hrUser.token)}` : ''}&v=${encodeURIComponent(candidate.updated_at || '')}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="btn-brutalist btn-brutalist-primary text-xs py-1.5 px-3 shrink-0"

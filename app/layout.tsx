@@ -93,6 +93,23 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   return (
     <html lang="en" suppressHydrationWarning className={`${inter.variable} ${spaceMono.variable} ${syne.variable}`}>
       <head>
+        <script
+          id="resize-observer-silencer"
+          dangerouslySetInnerHTML={{
+            __html: `
+              if (typeof window !== 'undefined') {
+                window.addEventListener('error', function(e) {
+                  if (e && e.message && (
+                    e.message.indexOf('ResizeObserver') !== -1
+                  )) {
+                    e.stopImmediatePropagation();
+                    e.preventDefault();
+                  }
+                });
+              }
+            `,
+          }}
+        />
         <GoogleTagManagerHead gtmId={settings.gtm_id} isEnabled={settings.is_gtm_enabled} />
         <OrganizationJsonLd settings={settings} />
         <WebPageJsonLd

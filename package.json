@@ -29,9 +29,12 @@
     "start": "PORT=3000 next start -p 3000",
     "lint": "eslint .",
     "clean": "next clean",
-    "reset-admin": "node scripts/generate-admin-hash.mjs"
+    "reset-admin": "node scripts/generate-admin-hash.mjs",
+    "migrate:resumes": "tsx scripts/migrate-resumes-to-do-spaces.ts"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1166.0",
+    "@aws-sdk/s3-request-presigner": "^3.1166.0",
     "@google/genai": "^2.31.0",
     "@hookform/resolvers": "^6.0.2",
     "@supabase/supabase-js": "^2.118.0",

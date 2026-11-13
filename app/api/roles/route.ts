@@ -35,6 +35,10 @@ export async function POST(req: NextRequest) {
     }
 
     const created = await createRoleRecord(body);
+    try {
+      const { revalidatePath } = await import('next/cache');
+      revalidatePath('/', 'layout');
+    } catch {}
     return NextResponse.json({ success: true, role: created }, { status: 201 });
   } catch (err: any) {
     return NextResponse.json({ success: false, error: err.message }, { status: 500 });

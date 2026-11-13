@@ -1,4 +1,6 @@
 import crypto from 'crypto';
+import fs from 'fs';
+import path from 'path';
 
 export interface AdminUserRecord {
   id: string;
@@ -17,8 +19,7 @@ export interface AdminUserRecord {
 // Primary initial super admin email
 export const DESIGNATED_ADMIN_EMAIL = 'admin@talentpulse.com';
 
-// Dynamic ephemeral runtime secret (generated dynamically in-memory if env variable is unset)
-// Never stored as static constant in code; zero static keys
+// Dynamic runtime secret persisted to data/.jwt_secret if env variable is unset
 let runtimeSecret: string | null = null;
 
 export function getSigningSecret(): string {
@@ -27,11 +28,34 @@ export function getSigningSecret(): string {
     return envSecret.trim();
   }
 
-  // Cryptographically random in-memory secret generated per server instance
-  if (!runtimeSecret) {
-    runtimeSecret = crypto.randomBytes(32).toString('hex');
+  if (runtimeSecret) {
+    return runtimeSecret;
   }
-  return runtimeSecret;
+
+  try {
+    const secretPath = path.join(process.cwd(), 'data', '.jwt_secret');
+    if (fs.existsSync(secretPath)) {
+      const saved = fs.readFileSync(secretPath, 'utf8').trim();
+      if (saved.length >= 32) {
+        runtimeSecret = saved;
+        return runtimeSecret;
+      }
+    }
+
+    const dataDir = path.join(process.cwd(), 'data');
+    if (!fs.existsSync(dataDir)) {
+      fs.mkdirSync(dataDir, { recursive: true });
+    }
+    const generated = crypto.randomBytes(32).toString('hex');
+    fs.writeFileSync(secretPath, generated, { encoding: 'utf8', mode: 0o600 });
+    runtimeSecret = generated;
+    return runtimeSecret;
+  } catch {
+    if (!runtimeSecret) {
+      runtimeSecret = crypto.randomBytes(32).toString('hex');
+    }
+    return runtimeSecret;
+  }
 }
 
 /**

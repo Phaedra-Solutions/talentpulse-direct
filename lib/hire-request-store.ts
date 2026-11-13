@@ -229,8 +229,3 @@ export async function deleteHireRequest(id: string): Promise<boolean> {
   }
   return true;
 }
-
-export async function resetMockHireRequests(): Promise<HireRequest[]> {
-  saveLocalHireRequests(INITIAL_HIRE_REQUESTS);
-  return INITIAL_HIRE_REQUESTS;
-}

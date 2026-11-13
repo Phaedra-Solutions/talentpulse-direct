@@ -100,9 +100,17 @@ export async function getCandidatesList(filters?: Partial<CandidateFilters>): Pr
     if (filters?.primaryRole && filters.primaryRole !== 'all') params.set('primaryRole', filters.primaryRole);
     if (filters?.availabilityStatus && filters.availabilityStatus !== 'all') params.set('availabilityStatus', filters.availabilityStatus);
     if (filters?.pipelineStage && filters.pipelineStage !== 'all') params.set('pipelineStage', filters.pipelineStage);
+    params.set('summary', 'true');
 
     const queryStr = params.toString() ? `?${params.toString()}` : '';
-    const res = await fetch(`/api/candidates${queryStr}`);
+    let authHeaders = {};
+    if (typeof window !== 'undefined') {
+      const { getAdminAuthHeaders } = await import('./auth/recruiter-auth');
+      authHeaders = getAdminAuthHeaders();
+    }
+    const res = await fetch(`/api/candidates${queryStr}`, {
+      headers: { ...authHeaders }
+    });
     if (res.ok) {
       const data = await res.json();
       if (Array.isArray(data.candidates)) {
@@ -151,7 +159,16 @@ export async function getCandidatesList(filters?: Partial<CandidateFilters>): Pr
         });
 
         const isLive = data.source === 'supabase';
-        if (isLive && items.length > 0) {
+        const isUnfiltered = !filters || (
+          (!filters.primaryRole || filters.primaryRole === 'all') &&
+          (!filters.availabilityStatus || filters.availabilityStatus === 'all') &&
+          (!filters.pipelineStage || filters.pipelineStage === 'all') &&
+          !filters.searchQuery &&
+          (!filters.targetRegion || filters.targetRegion === 'all') &&
+          (!filters.hasVideoPitch || filters.hasVideoPitch === 'all') &&
+          (!filters.hasResume || filters.hasResume === 'all')
+        );
+        if (isLive && isUnfiltered) {
           saveLocalCandidates(items);
         }
         return { candidates: items, isLiveSupabase: isLive };
@@ -384,9 +401,17 @@ export async function updateCandidateStageAndNotesRecord(
   internalNotes: string
 ): Promise<{ success: boolean; candidate?: Candidate; error?: string; isLiveSupabase: boolean }> {
   try {
+    let authHeaders: Record<string, string> = {};
+    if (typeof window !== 'undefined') {
+      const { getAdminAuthHeaders } = await import('./auth/recruiter-auth');
+      authHeaders = getAdminAuthHeaders();
+    }
     const res = await fetch(`/api/candidates/${id}`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...authHeaders,
+      },
       body: JSON.stringify({
         pipeline_stage: stage,
         internal_notes: internalNotes,
@@ -424,14 +449,4 @@ export async function updateCandidateStageAndNotesRecord(
   saveLocalCandidates(locals);
 
   return { success: true, candidate: locals[idx], isLiveSupabase: false };
-}
-
-/**
- * Reset local demo candidates to default initial mock dataset
- */
-export function resetMockData(): void {
-  if (typeof window !== 'undefined') {
-    localStorage.removeItem(OLD_STORAGE_KEY);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(INITIAL_MOCK_CANDIDATES));
-  }
 }

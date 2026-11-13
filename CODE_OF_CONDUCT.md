@@ -15,13 +15,15 @@ Examples of behavior that contributes to a positive environment for our communit
 * Giving and gracefully accepting constructive feedback
 * Accepting responsibility and apologizing to those affected by our mistakes, and learning from the experience
 * Focusing on what is best not just for us as individuals, but for the overall community
+* Protecting candidate privacy and safeguarding credentials across issues, pull requests, and logs
 
 Examples of unacceptable behavior include:
 
 * The use of sexualized language or imagery, and sexual attention or advances of any kind
 * Trolling, insulting or derogatory comments, and personal or political attacks
 * Public or private harassment
-* Publishing others' private information, such as a physical or email address, without their explicit permission
+* Publishing others' private information—including candidate resumes, phone numbers, email addresses, signed session tokens, or physical addresses—without explicit permission
+* Exposing or committing API keys, DigitalOcean Spaces credentials, Supabase service keys, or signing secrets in issues, pull requests, screenshots, or code
 * Other conduct which could reasonably be considered inappropriate in a professional setting
 
 ## Enforcement Responsibilities
@@ -40,7 +42,7 @@ Instances of abusive, harassing, or otherwise unacceptable behavior may be repor
 - **`admin@talentpulse.com`** (General Enforcement)
 - **`privacy@talentpulse.dev`** (Privacy & Data Protection Escalations)
 
-All complaints will be reviewed and investigated promptly and fairly. All community leaders are obligated to respect the privacy, confidentiality, and data protection rights of the reporter of any incident in accordance with our [Privacy Policy](docs/PRIVACY_POLICY.md).
+Security vulnerabilities or accidental secret exposures should be reported privately in accordance with [`SECURITY.md`](SECURITY.md). All complaints will be reviewed and investigated promptly and fairly. All community leaders are obligated to respect the privacy, confidentiality, and data protection rights of the reporter of any incident in accordance with our [Privacy Policy](docs/PRIVACY_POLICY.md).
 
 ## Enforcement Guidelines
 

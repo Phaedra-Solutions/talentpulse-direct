@@ -66,3 +66,9 @@ next-env.d.ts.bak
 
 # AI Studio Applet Artifacts (local only)
 .aistudio/
+
+# Runtime local secrets, credentials, and cached resumes (NEVER COMMIT)
+data/storage-config.json
+data/.jwt_secret
+data/resumes/
+

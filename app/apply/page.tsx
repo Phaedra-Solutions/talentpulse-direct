@@ -139,9 +139,10 @@ function ApplyFormContent() {
     if (!file) return;
 
     if (file.size > 10 * 1024 * 1024) {
-      alert('File size exceeds 10MB limit. Please upload a smaller PDF or DOCX file.');
+      setSubmitError('File size exceeds 10MB limit. Please upload a smaller PDF or DOCX file.');
       return;
     }
+    setSubmitError(null);
 
     setUploadedFileName(file.name);
     setValue('resume_filename', file.name, { shouldValidate: true });
