@@ -24,14 +24,14 @@ Unlike traditional applicant tracking systems (ATS), TalentPulse operates on an 
 │  [PUBLIC INTAKE & EXPERIENCE]             [RECRUITER & ADMIN SUITE]         │
 │  • Landing & Talent Showcase (/)          • Command Dashboard (/admin/...)  │
 │  • Dynamic Track Pages (/roles/[slug])    • Candidate Table & Kanban        │
-│  • Public Candidate Portal (/apply)       • Resume Storage & Migration UI   │
+│  • Public Candidate Portal (/apply)       • Candidate Dossier & PDF Viewer  │
 │  • Client Hire Intake (/hire)             • Client Hire Requests Manager    │
 │  • Candidate Self-Service (/candidate)    • Dynamic Roles & Tech Admin      │
 │  • Legal Suite (/privacy, /terms)         • Users & Enterprise SEO Suite    │
 │                                                                             │
 │  [SECURITY & STORAGE LAYER]               [CORE DATA & ENGINE]              │
 │  • PBKDF2-SHA512 + HMAC-SHA256 Sessions   • Supabase PostgreSQL + RLS       │
-│  • AES-256-GCM External Secret Store      • Next.js 15 App Router           │
+│  • Server-Side Private Resume Proxy       • Next.js 15 App Router           │
 │  • DigitalOcean Spaces (ACL: private)     • Authenticated Resume Proxy      │
 │  • GDPR / CCPA / PIPEDA PII Redaction     • Native XLSX & CSV Exporters     │
 │                                                                             │
@@ -94,16 +94,12 @@ Unlike traditional applicant tracking systems (ATS), TalentPulse operates on an 
     *   **Kanban Pipeline View**: Lifecycle stage tracking across `new`, `vetted`, `interviewing`, `assigned`, and `on_hold`.
 *   **5.2 Candidate Detail Dossier (`components/CandidateDetailDrawer.tsx`)**:
     *   Synchronized stage transitions and internal evaluation notes (`PATCH /api/candidates/[id]` with signed admin headers).
-    *   **Technical Resume / Artifact Status**: Clearly distinguishes canonical DigitalOcean Spaces objects (`[SPACES PRIVATE OBJECT]` + `DO SPACES [PRIVATE]: Talent Pulse/...`) from unmigrated legacy URLs (`[LEGACY URL ATTACHED]`), paired with a cache-busted `View PDF` link (`&v={updated_at}`).
+    *   **Technical Resume / Artifact Preview**: Displays attached resume filenames and private Spaces object paths paired with a cache-busted `View PDF` link (`&v={updated_at}`).
     *   Embedded YouTube/Loom video pitch preview and quick-copy email/contact actions.
-*   **5.3 Private DigitalOcean Spaces Storage & Proxy (`/api/admin/storage-config`, `/api/candidates/resume`)**:
-    *   **Endpoint Normalization**: Automatically strips accidental bucket prefixes from Spaces Origin URLs so S3 requests target regional endpoints (`https://{region}.digitaloceanspaces.com`) without TLS certificate altname mismatches, with automatic path-style fallback and `WHEN_REQUIRED` checksum configuration for `@aws-sdk/client-s3` compatibility.
-    *   **Test-Before-Save Validation**: `POST /api/admin/storage-config` verifies credentials (rejecting masked placeholders and mismatched single-half key updates) against DigitalOcean Spaces **before** persisting anything, returning `saved: false` on failure so working keys are never overwritten.
-    *   **External AES-256-GCM Secret Storage**: Keys are encrypted outside the repository at `~/.talentpulse/do-spaces.enc.json` (`0600` permissions), leaving only `{ endpoint, region, bucket }` in gitignored `data/storage-config.json`.
+*   **5.3 Private DigitalOcean Spaces Storage & Proxy (`/api/candidates/resume`)**:
+    *   **Endpoint Normalization**: Ensures S3 requests target clean regional endpoints (`https://{region}.digitaloceanspaces.com`) without TLS certificate altname mismatches, with automatic path-style fallback and `WHEN_REQUIRED` checksum configuration for `@aws-sdk/client-s3` compatibility.
     *   **Private Proxy Streaming (`/api/candidates/resume`)**: Streams private PDF/DOC/DOCX objects using `Cache-Control: private, no-store, no-cache, must-revalidate` and `Pragma: no-cache`, returning `403` to unauthorized external requests.
-*   **5.4 One-Click Legacy Resume Transfer (`POST /api/admin/migrate-resumes`, `npm run migrate:resumes`)**:
-    *   Scans candidates, skips records already normalized to `Talent Pulse/...`, transfers external/base64 resumes into private Spaces objects, deletes superseded legacy keys, verifies Supabase row updates affected the record, and surfaces partial-error warning banners if any candidate failed.
-*   **5.5 Bulk Data Exporting**:
+*   **5.4 Bulk Data Exporting**:
     *   **Native Excel (`.xlsx`) & CSV**: Formatted candidate exports with dynamic column widths, restricted to HR Executives and Super Admins.
 
 ---
@@ -161,6 +157,6 @@ Unlike traditional applicant tracking systems (ATS), TalentPulse operates on an 
 | **Styling** | Tailwind CSS v4 | Editorial Brutalist palette (`#F8F7F4`, `#111113`, `#FF4D00`) |
 | **Icons** | Lucide React | Consistent icon system across public and admin UI |
 | **Database** | Supabase PostgreSQL | `candidates`, `admin_users`, `roles`, `technologies`, `hire_requests`, `seo_settings`, `page_seo_overrides` |
-| **Object Storage** | DigitalOcean Spaces (`@aws-sdk/client-s3`) | Private ACL (`Talent Pulse/{Month-Year}/candidate/...`), AES-256-GCM external secret file, authenticated streaming proxy |
+| **Object Storage** | DigitalOcean Spaces (`@aws-sdk/client-s3`) | Private ACL (`Talent Pulse/{Month-Year}/candidate/...`), authenticated streaming proxy |
 | **Authentication** | PBKDF2 SHA-512 + HMAC-SHA256 | HttpOnly `admin_session` cookie + Bearer header verification |
 | **Spreadsheets** | SheetJS (`xlsx`) | Formatted `.xlsx` candidate exports |

@@ -16,9 +16,9 @@ Legacy role aliases (`admin` → `super_admin`; `recruiter` / `hr_lead` → pipe
 | :--- | :--- | :---: | :--- |
 | `anonymous` | **Anonymous / Public User** | **Tier 0** | Website visitors, prospective clients, and applicants. Can browse `/` and `/roles/[slug]`, view PII-redacted candidate showcases, submit candidate applications (`/apply`), and submit client hire requests (`/hire`). |
 | `candidate` | **Candidate User** | **Tier 1** | Verified profile owners authenticating via OTP on `/candidate/update`. May update their own availability, timezone overlap, portfolio links, and resume object. Forbidden from accessing admin dashboards or other candidates' records. |
-| `sales_executive` | **Sales Executive** | **Tier 2** | Account managers and client-facing recruiters. Authorized for the candidate pipeline (`/admin/dashboard`) and customer hire requests (`/admin/hire-requests`). **Forbidden** from bulk candidate exports (`.xlsx`/`.csv`), roles/tech administration (`/admin/roles`), admin user management (`/admin/users`), storage credential configuration (`/api/admin/storage-config`), and SEO settings (`/admin/seo`). |
-| `hr_executive` | **HR Executive** | **Tier 2** | Technical recruiters and talent acquisition leads. Authorized for the candidate pipeline (`/admin/dashboard`), bulk candidate exports (`.xlsx`/`.csv`), resume migration (`/api/admin/migrate-resumes`), and engineering tracks/technology moderation (`/admin/roles`). **Forbidden** from client hire requests (`/admin/hire-requests`), admin user management (`/admin/users`), storage credential management (`/api/admin/storage-config`), and SEO settings (`/admin/seo`). |
-| `super_admin` | **Super Admin** | **Tier 3** | Platform owners and system administrators. Full authority across all pipelines, hire requests (including deletion/CSV export), roles/tech taxonomy, user provisioning & invite tokens (`/admin/users`), DigitalOcean Spaces credentials (`/api/admin/storage-config`), resume migrations, and SEO settings (`/admin/seo`). |
+| `sales_executive` | **Sales Executive** | **Tier 2** | Account managers and client-facing recruiters. Authorized for the candidate pipeline (`/admin/dashboard`) and customer hire requests (`/admin/hire-requests`). **Forbidden** from bulk candidate exports (`.xlsx`/`.csv`), roles/tech administration (`/admin/roles`), admin user management (`/admin/users`), and SEO settings (`/admin/seo`). |
+| `hr_executive` | **HR Executive** | **Tier 2** | Technical recruiters and talent acquisition leads. Authorized for the candidate pipeline (`/admin/dashboard`), bulk candidate exports (`.xlsx`/`.csv`), and engineering tracks/technology moderation (`/admin/roles`). **Forbidden** from client hire requests (`/admin/hire-requests`), admin user management (`/admin/users`), and SEO settings (`/admin/seo`). |
+| `super_admin` | **Super Admin** | **Tier 3** | Platform owners and system administrators. Full authority across all pipelines, hire requests (including deletion/CSV export), roles/tech taxonomy, user provisioning & invite tokens (`/admin/users`), and SEO settings (`/admin/seo`). |
 
 ---
 
@@ -36,7 +36,7 @@ Legacy role aliases (`admin` → `super_admin`; `recruiter` / `hr_lead` → pipe
 | `/admin/login` | Administrator Authentication Gateway | ✅ **Allowed** | ✅ **Allowed** | ✅ **Allowed** | ✅ **Allowed** | ✅ **Allowed** |
 | `/admin/setup-password` | Invite Token Account Initialization | 🔒 *Token Gated* | 🔒 *Token Gated* | 🔒 *Token Gated* | 🔒 *Token Gated* | 🔒 *Token Gated* |
 | `/admin/change-password` | Admin Password Rotation Portal | ⛔ *-> /admin/login* | ⛔ *-> /admin/login* | ✅ **Allowed** *(Own)* | ✅ **Allowed** *(Own)* | ✅ **Allowed** *(Own)* |
-| `/admin/dashboard` | Recruiter Pipeline, Resume Vault & Migration | ⛔ *-> /admin/login* | ⛔ *-> /admin/login* | ✅ **Allowed** *(No Export / Config)* | ✅ **Allowed** *(No Storage Config)* | ✅ **Allowed** |
+| `/admin/dashboard` | Recruiter Candidate Command Center | ⛔ *-> /admin/login* | ⛔ *-> /admin/login* | ✅ **Allowed** *(No Export)* | ✅ **Allowed** | ✅ **Allowed** |
 | `/admin/hire-requests` | Customer Hire Requests Manager | ⛔ *-> /admin/login* | ⛔ *-> /admin/login* | ✅ **Allowed** | ⛔ *-> /admin/dashboard* | ✅ **Allowed** |
 | `/admin/roles` | Engineering Tracks & Tech Moderation | ⛔ *-> /admin/login* | ⛔ *-> /admin/login* | ⛔ *-> /admin/dashboard* | ✅ **Allowed** | ✅ **Allowed** |
 | `/admin/users` | Administrator Clearance Management | ⛔ *-> /admin/login* | ⛔ *-> /admin/login* | ⛔ *-> /admin/dashboard* | ⛔ *-> /admin/dashboard* | ✅ **Allowed** |
@@ -54,8 +54,6 @@ Legacy role aliases (`admin` → `super_admin`; `recruiter` / `hr_lead` → pipe
 | **View / Stream Private Candidate Resume** | ❌ `403 Forbidden` | ✅ Own Record Only | ✅ Full Access | ✅ Full Access | ✅ Full Access |
 | **Update Own Availability, Overlap & Resume** | ❌ No | ✅ Yes *(OTP Gated)* | ❌ No | ❌ No | ✅ Admin Override |
 | **Edit Candidate Pipeline Stage & Notes** | ❌ No | ❌ No | ✅ Yes | ✅ Yes | ✅ Yes |
-| **Configure & Test DO Spaces Credentials** | ❌ No | ❌ No | ❌ Forbidden | ❌ Forbidden | ✅ **Authorized** |
-| **Run Legacy Resume Migration to Spaces** | ❌ No | ❌ No | ✅ Authorized | ✅ Authorized | ✅ Authorized |
 | **Export Candidates to Excel (`.xlsx`) / CSV** | ❌ No | ❌ No | ❌ **Forbidden** | ✅ **Authorized** | ✅ **Authorized** |
 | **View & Update Client Hire Requests** | ❌ No | ❌ No | ✅ Yes | ❌ Forbidden | ✅ Yes |
 | **Delete / Export Client Hire Requests** | ❌ No | ❌ No | ❌ Forbidden | ❌ Forbidden | ✅ **Authorized** |
@@ -84,8 +82,6 @@ Server-side route handlers enforce `requireAdminAuth(req, permissionCheck)` from
 | `/api/roles` / `/api/roles/[id]` | `POST` / `PUT` / `DELETE` | `canManageRolesAndTech` | `401 Unauthorized` | `403 Forbidden` *(Sales)* | `200` / `201` |
 | `/api/technologies` | `GET` / `POST` | Public Approved / Admin All; Open Submission | `200` / `201` | N/A | `200` / `201` |
 | `/api/technologies/[id]` | `PUT` / `DELETE` | `canManageRolesAndTech` | `401 Unauthorized` | `403 Forbidden` *(Sales)* | `200 OK` |
-| `/api/admin/storage-config` | `GET` / `POST` | `canManageAdminUsers` *(Tests connection BEFORE saving)* | `401 Unauthorized` | `403 Forbidden` | `200 OK` *(Super)* |
-| `/api/admin/migrate-resumes` | `GET` / `POST` | `canAccessCandidatePipeline` | `401 Unauthorized` | `403 Forbidden` | `200 OK` |
 | `/api/admin/users` | `GET` / `POST` / `PATCH` / `DELETE` | `canManageAdminUsers` | `401 Unauthorized` | `403 Forbidden` | `200` / `201` *(Super)* |
 | `/api/admin/seo` & `/api/admin/seo/pages` | `GET` / `POST` / `DELETE` | `canManageSeo` | `401 Unauthorized` | `403 Forbidden` | `200 OK` *(Super)* |
 | `/api/admin/login` / `logout` / `change-password` / `setup-password` | `POST` / `GET` | Password / Invite Token Verification | `401` / `400` | N/A | `200 OK` |
@@ -93,7 +89,7 @@ Server-side route handlers enforce `requireAdminAuth(req, permissionCheck)` from
 
 ---
 
-## 5. Field-Level PII Visibility & Storage Redaction
+## 5. Field-Level PII Visibility & Redaction
 
 Under our Privacy Policy and GDPR Article 5(1)(c) data minimization principles, Candidate PII is redacted on the server before dispatching public responses:
 
@@ -110,10 +106,6 @@ Under our Privacy Policy and GDPR Article 5(1)(c) data minimization principles, 
 | `video_pitch_url` | Visible *(Screened)* | Direct URL | Direct Video Player |
 | `internal_notes` / `pipeline_stage` | `""` *(Redacted)* | `""` *(Hidden)* | Unrestricted Access |
 
-**Storage Credential Redaction (`GET /api/admin/storage-config`)**:
-- Never returns `secretKey` or full `accessKey`.
-- Returns only `endpoint`, `region`, `bucket`, `accessKeyMasked` (`first4...last4`), `hasAccessKey`, and `hasSecretKey`.
-
 ---
 
 ## 6. Authentication & Secret Lifecycle
@@ -126,5 +118,3 @@ Under our Privacy Policy and GDPR Article 5(1)(c) data minimization principles, 
    - Transport: HTTP-Only, `SameSite=None`, `Secure` cookie (`admin_session`) plus `Authorization: Bearer <token>` / `x-admin-token` header support.
 3. **Password Rotation**:
    - Newly provisioned or password-reset admin accounts are flagged `must_change_password: true` and forced onto `/admin/change-password` before accessing dashboard tools.
-4. **Encrypted Object Storage Secrets**:
-   - DigitalOcean Spaces keys submitted via `/admin/dashboard` are verified against Spaces first and then encrypted via AES-256-GCM outside the repository in `~/.talentpulse/do-spaces.enc.json` (`0600` permissions), using an `scryptSync` key derived from `getSigningSecret()`.

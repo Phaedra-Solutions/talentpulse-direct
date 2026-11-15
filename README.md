@@ -56,8 +56,8 @@ TalentPulse Direct maintains comprehensive architecture, security, and legal doc
 | ⚡ **Public Application Portal** | High-throughput intake form (`/apply`) with Zod validation, direct resume upload (up to 10 MB), dynamic role tracks (`/roles/[slug]`), and dual legal consent. |
 | 💼 **Client Hire Portal** | Enterprise staffing intake form (`/hire`) with project scoping, budget bands, and dual terms/privacy consent. |
 | 🔄 **Candidate Self-Service** | OTP-verified candidate portal (`/candidate/update`) for real-time availability, timezone overlap adjustments, and live resume replacement. |
-| ☁️ **Private DO Spaces Resume Vault** | Stores resumes privately under `Talent Pulse/{Month-Year}/candidate/{candidateId}_{filename}` with regional endpoint normalization, test-before-save validation, AES-256-GCM external secret encryption (`~/.talentpulse/do-spaces.enc.json`), and one-click legacy resume migration (`npm run migrate:resumes`). |
-| 📊 **Recruiter Command Center** | High-density table & Kanban pipeline (`/admin/dashboard`) with candidate dossiers displaying live `DO SPACES [PRIVATE]` keys, cache-busted PDF previews, and stage audit notes. |
+| ☁️ **Private DO Spaces Resume Vault** | Stores resumes privately under `Talent Pulse/{Month-Year}/candidate/{candidateId}_{filename}` with regional endpoint normalization and private authenticated proxy streaming (`/api/candidates/resume`). |
+| 📊 **Recruiter Command Center** | High-density table & Kanban pipeline (`/admin/dashboard`) with candidate dossiers, private PDF previews, and stage audit notes. |
 | 📥 **Bulk Excel & CSV Export** | Formatted `.xlsx` and `.csv` candidate exports with dynamic column sizing, restricted to HR Executives and Super Admins. |
 | 👥 **Granular Admin RBAC** | Multi-tier clearance (`Super Admin`, `Sales Executive`, `HR Executive`) enforced via HMAC-SHA256 `admin_session` cookies and Bearer tokens. |
 | 🔑 **Invite Link Onboarding** | One-click copyable cryptographic invite links (`/admin/setup-password?invite=...`) and automated temporary credentials. |
@@ -106,7 +106,7 @@ Copy `.env.example` into `.env.local`:
 cp .env.example .env.local
 ```
 
-Populate the required keys (never commit `.env.local`, `data/storage-config.json`, or `data/.jwt_secret`):
+Populate the required keys (never commit `.env.local` or `data/.jwt_secret`):
 ```env
 # Application URL
 APP_URL="http://localhost:3000"
@@ -119,7 +119,7 @@ SUPABASE_SECRET_KEY="sb_sec_your_secret_key"
 # Server-side HMAC & Encryption Signing Secret (set a strong random string in production)
 JWT_SECRET="your-32-byte-random-secret"
 
-# DigitalOcean Spaces (Optional via env — or configure via Admin Dashboard)
+# DigitalOcean Spaces (Private Resume Storage)
 DO_SPACES_ENDPOINT="https://sgp1.digitaloceanspaces.com"
 DO_SPACES_REGION="sgp1"
 DO_SPACES_BUCKET="your-spaces-bucket"
@@ -154,14 +154,8 @@ Visit [http://localhost:3000](http://localhost:3000) to view the application:
 - **Client Hire Portal:** [http://localhost:3000/hire](http://localhost:3000/hire)
 - **Candidate Self-Service:** [http://localhost:3000/candidate/update](http://localhost:3000/candidate/update)
 - **Recruiter Admin Login:** [http://localhost:3000/admin/login](http://localhost:3000/admin/login)
-- **Admin Dashboard & Resume Storage:** [http://localhost:3000/admin/dashboard](http://localhost:3000/admin/dashboard)
+- **Admin Dashboard:** [http://localhost:3000/admin/dashboard](http://localhost:3000/admin/dashboard)
 - **Admin User Management:** [http://localhost:3000/admin/users](http://localhost:3000/admin/users)
-
-### 6. Migrate Legacy Resumes to DigitalOcean Spaces (Optional)
-After verifying your Spaces credentials in **Admin Dashboard → Resume Storage Settings**, click **Execute Resume Transfer** or run the CLI migration script:
-```bash
-npm run migrate:resumes
-```
 
 ---
 
@@ -183,7 +177,7 @@ npm run build
 
 Security and privacy of applicant data are paramount. Please do not submit vulnerability reports to public GitHub issues.
 
-Review **[SECURITY.md](SECURITY.md)** for our private disclosure procedure, encrypted Spaces secret storage architecture, and 90-day responsible disclosure policy.
+Review **[SECURITY.md](SECURITY.md)** for our private disclosure procedure and 90-day responsible disclosure policy.
 
 ---
 
