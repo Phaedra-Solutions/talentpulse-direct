@@ -487,9 +487,14 @@ CREATE TABLE IF NOT EXISTS public.seo_settings (
     { "userAgent": "PerplexityBot", "allow": ["/", "/roles/*", "/hire", "/apply", "/privacy", "/terms", "/llms.txt"], "disallow": ["/admin/", "/api/", "/candidates/", "/candidate/"] },
     { "userAgent": "ClaudeBot", "allow": ["/", "/roles/*", "/hire", "/apply", "/privacy", "/terms", "/llms.txt"], "disallow": ["/admin/", "/api/", "/candidates/", "/candidate/"] }
   ]'::jsonb,
+  robots_txt TEXT DEFAULT '',
+  llms_txt TEXT DEFAULT '',
   created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
 );
+
+ALTER TABLE public.seo_settings ADD COLUMN IF NOT EXISTS robots_txt TEXT DEFAULT '';
+ALTER TABLE public.seo_settings ADD COLUMN IF NOT EXISTS llms_txt TEXT DEFAULT '';
 
 CREATE TABLE IF NOT EXISTS public.page_seo_overrides (
   path TEXT PRIMARY KEY,

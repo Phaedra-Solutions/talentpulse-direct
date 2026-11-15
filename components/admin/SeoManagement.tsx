@@ -25,7 +25,8 @@ import {
   Sparkles,
   Layers,
   Check,
-  Copy
+  Copy,
+  RotateCcw
 } from 'lucide-react';
 import { 
   SeoSettings, 
@@ -33,6 +34,8 @@ import {
   FaqItem, 
   getSeoSettings, 
   getPageSeoOverrides,
+  generateDefaultRobotsTxt,
+  generateDefaultLlmsTxt,
   DEFAULT_SEO_SETTINGS,
   DEFAULT_PAGE_OVERRIDES
 } from '@/lib/seo-service';
@@ -1338,6 +1341,126 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
               >
                 Inspect Live <ExternalLink className="w-3.5 h-3.5" />
               </a>
+            </div>
+          </div>
+
+          {/* Editable Database-Backed Textareas for robots.txt and llms.txt */}
+          <div className="border-t-2 border-[#111113] pt-6 space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div>
+                <h3 className="text-xl font-syne font-bold text-[#111113]">
+                  Database Crawler File Editors
+                </h3>
+                <p className="text-xs font-mono text-[#111113]/60">
+                  Changes below are saved to the database and served dynamically at <code>/robots.txt</code> and <code>/llms.txt</code>.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={handleSaveSettings}
+                disabled={isSaving}
+                className="inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-[#FF4D00] text-white font-mono text-xs uppercase font-bold tracking-wider hover:bg-[#e04400] transition-colors disabled:opacity-50"
+              >
+                {isSaving ? (
+                  <>
+                    <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  <>
+                    <Save className="w-4 h-4" />
+                    Save Robots & LLMs.txt
+                  </>
+                )}
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* robots.txt Editor */}
+              <div className="border-2 border-[#111113] bg-[#F8F7F4] p-4 flex flex-col space-y-3">
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <label
+                      htmlFor="robots-txt-editor"
+                      className="block font-mono text-xs uppercase font-bold text-[#111113]"
+                    >
+                      robots.txt Content
+                    </label>
+                    <span className="font-mono text-[11px] text-[#111113]/60">
+                      {(settings.robots_txt || '').split('\n').length} lines • Served at <code>/robots.txt</code>
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setSettings((prev) => ({
+                        ...prev,
+                        robots_txt: generateDefaultRobotsTxt(prev),
+                      }))
+                    }
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 border-2 border-[#111113] bg-white text-[#111113] font-mono text-[11px] uppercase font-bold hover:bg-[#111113] hover:text-white transition-colors"
+                    title="Restore default robots.txt rules"
+                  >
+                    <RotateCcw className="w-3 h-3" /> Reset Default
+                  </button>
+                </div>
+
+                <textarea
+                  id="robots-txt-editor"
+                  rows={14}
+                  value={settings.robots_txt || ''}
+                  onChange={(e) => setSettings({ ...settings, robots_txt: e.target.value })}
+                  spellCheck={false}
+                  className="w-full px-3 py-2.5 border-2 border-[#111113] bg-white font-mono text-xs leading-relaxed text-[#111113] focus:outline-none focus:border-[#FF4D00] resize-y"
+                  placeholder={`User-agent: *\nAllow: /\nDisallow: /admin/*\nDisallow: /api/*\n\nSitemap: https://talentpulse.dev/sitemap.xml`}
+                />
+
+                {!settings.is_indexing_enabled && (
+                  <p className="text-[11px] font-mono text-amber-800 bg-amber-50 border border-amber-400 px-3 py-2">
+                    Master indexing switch is currently <strong>OFF</strong> — <code>/robots.txt</code> will temporarily serve <code>Disallow: /</code> until indexing is re-enabled.
+                  </p>
+                )}
+              </div>
+
+              {/* llms.txt Editor */}
+              <div className="border-2 border-[#111113] bg-[#F8F7F4] p-4 flex flex-col space-y-3">
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <label
+                      htmlFor="llms-txt-editor"
+                      className="block font-mono text-xs uppercase font-bold text-[#111113]"
+                    >
+                      llms.txt Content
+                    </label>
+                    <span className="font-mono text-[11px] text-[#111113]/60">
+                      {(settings.llms_txt || '').split('\n').length} lines • Served at <code>/llms.txt</code>
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setSettings((prev) => ({
+                        ...prev,
+                        llms_txt: generateDefaultLlmsTxt(prev),
+                      }))
+                    }
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 border-2 border-[#111113] bg-white text-[#111113] font-mono text-[11px] uppercase font-bold hover:bg-[#111113] hover:text-white transition-colors"
+                    title="Restore default llms.txt markdown"
+                  >
+                    <RotateCcw className="w-3 h-3" /> Reset Default
+                  </button>
+                </div>
+
+                <textarea
+                  id="llms-txt-editor"
+                  rows={14}
+                  value={settings.llms_txt || ''}
+                  onChange={(e) => setSettings({ ...settings, llms_txt: e.target.value })}
+                  spellCheck={false}
+                  className="w-full px-3 py-2.5 border-2 border-[#111113] bg-white font-mono text-xs leading-relaxed text-[#111113] focus:outline-none focus:border-[#FF4D00] resize-y"
+                  placeholder={`# TalentPulse - On-Demand Vetted Tech Talent Platform\n\n> Summary for AI crawlers and LLM search engines...`}
+                />
+              </div>
             </div>
           </div>
         </div>

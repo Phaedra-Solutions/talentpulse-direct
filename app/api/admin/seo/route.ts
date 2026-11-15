@@ -30,6 +30,8 @@ export async function POST(req: NextRequest) {
 
     try {
       revalidatePath('/', 'layout');
+      revalidatePath('/robots.txt');
+      revalidatePath('/llms.txt');
     } catch {}
 
     return NextResponse.json({

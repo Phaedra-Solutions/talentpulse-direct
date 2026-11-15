@@ -48,6 +48,8 @@ export interface SeoSettings {
   organization_json: OrganizationJson;
   faq_items: FaqItem[];
   robots_rules: RobotsRule[];
+  robots_txt: string;
+  llms_txt: string;
   created_at?: string;
   updated_at?: string;
 }
@@ -145,8 +147,127 @@ export const DEFAULT_SEO_SETTINGS: SeoSettings = {
       allow: ['/', '/privacy', '/terms', '/llms.txt'],
       disallow: ['/admin/', '/api/', '/candidates/', '/candidate/']
     }
-  ]
+  ],
+  robots_txt: '',
+  llms_txt: ''
 };
+
+const CRAWLER_FILES_META_AGENT = '__talentpulse_crawler_files__';
+
+export function generateDefaultRobotsTxt(
+  settings: Pick<SeoSettings, 'canonical_base_url' | 'robots_rules'>
+): string {
+  const baseUrl = (settings.canonical_base_url || 'https://talentpulse.dev').replace(/\/$/, '');
+  const disallowedPrivatePaths = [
+    '/admin',
+    '/admin/*',
+    '/api/*',
+    '/_next/*',
+    '/candidates',
+    '/candidates/*',
+    '/candidate',
+    '/candidate/*',
+  ];
+
+  const rules =
+    settings.robots_rules && settings.robots_rules.length > 0
+      ? settings.robots_rules
+      : DEFAULT_SEO_SETTINGS.robots_rules;
+
+  const blocks = rules
+    .filter((r) => r.userAgent && r.userAgent !== CRAWLER_FILES_META_AGENT)
+    .map((rule) => {
+      const lines: string[] = [`User-agent: ${rule.userAgent}`];
+      const allows = (rule.allow || []).filter(
+        (p) => !p.startsWith('/candidate') && !p.startsWith('/candidates')
+      );
+      const disallows = Array.from(new Set([...(rule.disallow || []), ...disallowedPrivatePaths]));
+      allows.forEach((p) => lines.push(`Allow: ${p}`));
+      disallows.forEach((p) => lines.push(`Disallow: ${p}`));
+      return lines.join('\n');
+    });
+
+  return `${blocks.join('\n\n')}\n\nSitemap: ${baseUrl}/sitemap.xml\nHost: ${baseUrl}\n`;
+}
+
+export function generateDefaultLlmsTxt(
+  settings: Pick<SeoSettings, 'canonical_base_url' | 'organization_json'>
+): string {
+  const baseUrl = (settings.canonical_base_url || 'https://talentpulse.dev').replace(/\/$/, '');
+  const org = settings.organization_json;
+
+  return `# TalentPulse - On-Demand Vetted Tech Talent Platform
+
+> ${org?.description || 'TalentPulse is an elite talent matchmaking platform connecting scaling tech companies, venture-backed startups, and enterprise engineering departments with rigorously vetted, senior-level software engineers, cloud architects, DevOps specialists, and AI/ML developers.'}
+
+## Core Capabilities & Services
+- **48-Hour Talent Matching**: Pre-interviewed, technical test-verified engineering talent available for contract, contract-to-hire, and full-time positions.
+- **Top 1% Talent Vetting**: Comprehensive 4-stage evaluation covering deep technical coding proficiency, system design architecture, communication, and real-world project velocity.
+- **No-Risk Trial Period**: Two-week trial period on all engineering placements to guarantee cultural and technical alignment.
+- **Client Timezone Overlap**: Mandatory minimum of 4-6 hours working overlap with US, European, or Australian business hours.
+
+## Technical Specializations & Talent Categories
+- **Frontend Development**: React 19, Next.js, Vue.js, TypeScript, Tailwind CSS, Responsive Web Performance, WebGL/Three.js.
+- **Backend & Distributed Systems**: Node.js, Go, Python, Rust, Java/Spring, PostgreSQL, Redis, Kafka, Microservices Architecture.
+- **Cloud & DevOps**: AWS, Google Cloud Platform (GCP), Kubernetes, Docker, Terraform, CI/CD pipelines, Zero-Trust Security.
+- **AI & Machine Learning**: LLM fine-tuning, RAG (Retrieval-Augmented Generation), Gemini API, OpenAI API, LangChain, PyTorch, Vector Databases (pgvector, Pinecone).
+- **Mobile Engineering**: React Native, Flutter, Swift (iOS), Kotlin (Android).
+
+## Public Web Resources
+- [Home Page](${baseUrl}/): Platform overview, vetting statistics, and client success stories.
+- [Hire Contract Engineers](${baseUrl}/hire): Instant onboarding form for engineering hiring managers to submit team staffing specifications.
+- [Join Talent Pool](${baseUrl}/apply): Application portal for senior software engineers, FDEs, and AI specialists.
+- [Sitemap](${baseUrl}/sitemap.xml): Complete machine-readable XML index of public URLs.
+
+## Contact & Enterprise Inquiries
+- Organization: ${org?.name || 'TalentPulse Inc.'}
+- Inquiries: ${org?.email || 'hire@talentpulse.dev'}
+- Website: ${baseUrl}
+`;
+}
+
+DEFAULT_SEO_SETTINGS.robots_txt = generateDefaultRobotsTxt(DEFAULT_SEO_SETTINGS);
+DEFAULT_SEO_SETTINGS.llms_txt = generateDefaultLlmsTxt(DEFAULT_SEO_SETTINGS);
+
+function normalizeSeoSettingsRow(data: any): SeoSettings {
+  const rawRules: any[] = Array.isArray(data?.robots_rules)
+    ? data.robots_rules
+    : DEFAULT_SEO_SETTINGS.robots_rules;
+
+  const embeddedMeta = rawRules.find(
+    (entry) => entry && typeof entry === 'object' && entry.userAgent === CRAWLER_FILES_META_AGENT
+  );
+  const cleanRules: RobotsRule[] = rawRules.filter(
+    (entry) => entry && typeof entry === 'object' && entry.userAgent !== CRAWLER_FILES_META_AGENT
+  );
+
+  const canonicalBaseUrl = data?.canonical_base_url || DEFAULT_SEO_SETTINGS.canonical_base_url;
+  const organizationJson = data?.organization_json || DEFAULT_SEO_SETTINGS.organization_json;
+
+  const rawRobotsTxt =
+    typeof data?.robots_txt === 'string' && data.robots_txt.trim().length > 0
+      ? data.robots_txt
+      : typeof embeddedMeta?.robots_txt === 'string' && embeddedMeta.robots_txt.trim().length > 0
+        ? embeddedMeta.robots_txt
+        : generateDefaultRobotsTxt({ canonical_base_url: canonicalBaseUrl, robots_rules: cleanRules });
+
+  const rawLlmsTxt =
+    typeof data?.llms_txt === 'string' && data.llms_txt.trim().length > 0
+      ? data.llms_txt
+      : typeof embeddedMeta?.llms_txt === 'string' && embeddedMeta.llms_txt.trim().length > 0
+        ? embeddedMeta.llms_txt
+        : generateDefaultLlmsTxt({ canonical_base_url: canonicalBaseUrl, organization_json: organizationJson });
+
+  return {
+    ...DEFAULT_SEO_SETTINGS,
+    ...data,
+    organization_json: organizationJson,
+    faq_items: Array.isArray(data?.faq_items) ? data.faq_items : DEFAULT_SEO_SETTINGS.faq_items,
+    robots_rules: cleanRules.length > 0 ? cleanRules : DEFAULT_SEO_SETTINGS.robots_rules,
+    robots_txt: rawRobotsTxt,
+    llms_txt: rawLlmsTxt,
+  };
+}
 
 export const DEFAULT_PAGE_OVERRIDES: Record<string, PageSeoOverride> = {
   '/': {
@@ -293,13 +414,7 @@ export async function getSeoSettings(): Promise<SeoSettings> {
             .maybeSingle();
 
           if (!error && data) {
-            return {
-              ...DEFAULT_SEO_SETTINGS,
-              ...data,
-              organization_json: data.organization_json || DEFAULT_SEO_SETTINGS.organization_json,
-              faq_items: Array.isArray(data.faq_items) ? data.faq_items : DEFAULT_SEO_SETTINGS.faq_items,
-              robots_rules: Array.isArray(data.robots_rules) ? data.robots_rules : DEFAULT_SEO_SETTINGS.robots_rules,
-            };
+            return normalizeSeoSettingsRow(data);
           }
         }
       } catch (err) {
@@ -321,13 +436,7 @@ export async function getSeoSettings(): Promise<SeoSettings> {
           .maybeSingle();
 
         if (!error && data) {
-          const merged: SeoSettings = {
-            ...DEFAULT_SEO_SETTINGS,
-            ...data,
-            organization_json: data.organization_json || DEFAULT_SEO_SETTINGS.organization_json,
-            faq_items: Array.isArray(data.faq_items) ? data.faq_items : DEFAULT_SEO_SETTINGS.faq_items,
-            robots_rules: Array.isArray(data.robots_rules) ? data.robots_rules : DEFAULT_SEO_SETTINGS.robots_rules,
-          };
+          const merged = normalizeSeoSettingsRow(data);
           try {
             localStorage.setItem(SEO_STORAGE_KEY, JSON.stringify(merged));
           } catch {}
@@ -343,7 +452,7 @@ export async function getSeoSettings(): Promise<SeoSettings> {
   try {
     const cached = localStorage.getItem(SEO_STORAGE_KEY);
     if (cached) {
-      return { ...DEFAULT_SEO_SETTINGS, ...JSON.parse(cached) };
+      return normalizeSeoSettingsRow(JSON.parse(cached));
     }
   } catch {}
 
@@ -520,10 +629,94 @@ export async function constructMetadataForPath(
  */
 export async function updateSeoSettings(updates: Partial<SeoSettings>): Promise<SeoSettings> {
   const current = await getSeoSettings();
+  const cleanRules = (updates.robots_rules ?? current.robots_rules ?? DEFAULT_SEO_SETTINGS.robots_rules).filter(
+    (r) => r && r.userAgent !== CRAWLER_FILES_META_AGENT
+  );
+
   const updated: SeoSettings = {
     ...current,
     ...updates,
+    robots_rules: cleanRules,
+    robots_txt:
+      updates.robots_txt !== undefined
+        ? updates.robots_txt
+        : current.robots_txt || generateDefaultRobotsTxt({
+            canonical_base_url: updates.canonical_base_url || current.canonical_base_url,
+            robots_rules: cleanRules,
+          }),
+    llms_txt:
+      updates.llms_txt !== undefined
+        ? updates.llms_txt
+        : current.llms_txt || generateDefaultLlmsTxt({
+            canonical_base_url: updates.canonical_base_url || current.canonical_base_url,
+            organization_json: updates.organization_json || current.organization_json,
+          }),
     updated_at: new Date().toISOString()
+  };
+
+  const basePayload = {
+    id: 'main_config',
+    site_name: updated.site_name,
+    title_template: updated.title_template,
+    default_title: updated.default_title,
+    default_meta_description: updated.default_meta_description,
+    default_keywords: updated.default_keywords,
+    canonical_base_url: updated.canonical_base_url,
+    gtm_id: updated.gtm_id,
+    ga_id: updated.ga_id,
+    is_gtm_enabled: Boolean(updated.is_gtm_enabled),
+    og_image_url: updated.og_image_url,
+    og_type: updated.og_type,
+    twitter_card: updated.twitter_card,
+    twitter_handle: updated.twitter_handle,
+    is_indexing_enabled: Boolean(updated.is_indexing_enabled),
+    organization_json: updated.organization_json,
+    faq_items: updated.faq_items,
+    robots_rules: cleanRules,
+    robots_txt: updated.robots_txt,
+    llms_txt: updated.llms_txt,
+    updated_at: updated.updated_at,
+  };
+
+  const legacyFallbackPayload = {
+    id: 'main_config',
+    site_name: updated.site_name,
+    title_template: updated.title_template,
+    default_title: updated.default_title,
+    default_meta_description: updated.default_meta_description,
+    default_keywords: updated.default_keywords,
+    canonical_base_url: updated.canonical_base_url,
+    gtm_id: updated.gtm_id,
+    ga_id: updated.ga_id,
+    is_gtm_enabled: Boolean(updated.is_gtm_enabled),
+    og_image_url: updated.og_image_url,
+    og_type: updated.og_type,
+    twitter_card: updated.twitter_card,
+    twitter_handle: updated.twitter_handle,
+    is_indexing_enabled: Boolean(updated.is_indexing_enabled),
+    organization_json: updated.organization_json,
+    faq_items: updated.faq_items,
+    robots_rules: [
+      ...cleanRules,
+      {
+        userAgent: CRAWLER_FILES_META_AGENT,
+        allow: [],
+        disallow: [],
+        robots_txt: updated.robots_txt,
+        llms_txt: updated.llms_txt,
+      },
+    ],
+    updated_at: updated.updated_at,
+  };
+
+  const isMissingColumnError = (err: any) => {
+    const msg = (err?.message || '').toLowerCase();
+    return (
+      err?.code === 'PGRST204' ||
+      err?.code === '42703' ||
+      msg.includes('robots_txt') ||
+      msg.includes('llms_txt')
+    );
   };
 
   const isServer = typeof window === 'undefined';
@@ -532,32 +725,16 @@ export async function updateSeoSettings(updates: Partial<SeoSettings>): Promise<
     if (isServerSupabaseConfigured) {
       const serverClient = getSupabaseServerClient();
       if (serverClient) {
-        const { error } = await serverClient
+        let { error } = await serverClient
           .from('seo_settings')
-          .upsert(
-            {
-              id: 'main_config',
-              site_name: updated.site_name,
-              title_template: updated.title_template,
-              default_title: updated.default_title,
-              default_meta_description: updated.default_meta_description,
-              default_keywords: updated.default_keywords,
-              canonical_base_url: updated.canonical_base_url,
-              gtm_id: updated.gtm_id,
-              ga_id: updated.ga_id,
-              is_gtm_enabled: Boolean(updated.is_gtm_enabled),
-              og_image_url: updated.og_image_url,
-              og_type: updated.og_type,
-              twitter_card: updated.twitter_card,
-              twitter_handle: updated.twitter_handle,
-              is_indexing_enabled: Boolean(updated.is_indexing_enabled),
-              organization_json: updated.organization_json,
-              faq_items: updated.faq_items,
-              robots_rules: updated.robots_rules,
-              updated_at: updated.updated_at
-            },
-            { onConflict: 'id' }
-          );
+          .upsert(basePayload, { onConflict: 'id' });
+
+        if (error && isMissingColumnError(error)) {
+          const retry = await serverClient
+            .from('seo_settings')
+            .upsert(legacyFallbackPayload, { onConflict: 'id' });
+          error = retry.error;
+        }
 
         if (error) {
           console.error('[SEO] Error updating seo_settings in Supabase:', error);
@@ -568,32 +745,16 @@ export async function updateSeoSettings(updates: Partial<SeoSettings>): Promise<
   } else if (isSupabaseConfigured) {
     const browserClient = getSupabaseBrowserClient();
     if (browserClient) {
-      const { error } = await browserClient
+      let { error } = await browserClient
         .from('seo_settings')
-        .upsert(
-          {
-            id: 'main_config',
-            site_name: updated.site_name,
-            title_template: updated.title_template,
-            default_title: updated.default_title,
-            default_meta_description: updated.default_meta_description,
-            default_keywords: updated.default_keywords,
-            canonical_base_url: updated.canonical_base_url,
-            gtm_id: updated.gtm_id,
-            ga_id: updated.ga_id,
-            is_gtm_enabled: Boolean(updated.is_gtm_enabled),
-            og_image_url: updated.og_image_url,
-            og_type: updated.og_type,
-            twitter_card: updated.twitter_card,
-            twitter_handle: updated.twitter_handle,
-            is_indexing_enabled: Boolean(updated.is_indexing_enabled),
-            organization_json: updated.organization_json,
-            faq_items: updated.faq_items,
-            robots_rules: updated.robots_rules,
-            updated_at: updated.updated_at
-          },
-          { onConflict: 'id' }
-        );
+        .upsert(basePayload, { onConflict: 'id' });
+
+      if (error && isMissingColumnError(error)) {
+        const retry = await browserClient
+          .from('seo_settings')
+          .upsert(legacyFallbackPayload, { onConflict: 'id' });
+        error = retry.error;
+      }
 
       if (error) {
         console.error('[SEO] Error updating seo_settings in Supabase (browser):', error);

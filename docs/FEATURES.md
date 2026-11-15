@@ -137,8 +137,8 @@ Unlike traditional applicant tracking systems (ATS), TalentPulse operates on an 
     *   Site title templates, meta descriptions, canonical base URLs, and toggleable GTM / GA4 tracking.
 *   **9.2 Social Cards & Page Overrides**:
     *   OpenGraph / Twitter card simulator and granular per-route overrides (`title`, `description`, `keywords`, `canonical_url`, `no_index`, `no_follow`, `h1_heading`, `schema_type`).
-*   **9.3 Structured Data & Crawler Endpoints**:
-    *   Dynamic JSON-LD injection plus `/robots.txt`, `/sitemap.xml`, and `/llms.txt` generation.
+*   **9.3 Structured Data & Database-Backed Crawler Files**:
+    *   Dynamic JSON-LD injection (`Organization` and `FAQPage`), `/sitemap.xml` generation, and database-persisted `robots.txt` and `llms.txt` content editable directly in the **Robots, Sitemap & LLMs.txt** tab on `/admin/seo` and served dynamically from `/robots.txt` and `/llms.txt`.
 
 ---
 
