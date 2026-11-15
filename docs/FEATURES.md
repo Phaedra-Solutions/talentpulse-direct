@@ -80,11 +80,12 @@ Unlike traditional applicant tracking systems (ATS), TalentPulse operates on an 
 ---
 
 ### Domain 4: Candidate Self-Service Portal (`/candidate/update`)
-*   **4.1 OTP-Gated Profile Access**:
-    *   Email lookup + OTP verification gate preventing unauthorized edits to candidate profiles.
-*   **4.2 Live Availability & Resume Replacement**:
+*   **4.1 Supabase Email OTP Verification & JWT-Gated Profile Access**:
+    *   Candidates authenticate via passwordless Supabase Email OTP (`shouldCreateUser: true`, 60-second resend cooldown, support for up to 8-digit OTP tokens, compatible with custom Google SMTP).
+    *   Once verified, `/candidate/update` forwards the candidate's Supabase `Authorization: Bearer <token>` JWT to `GET` and `PATCH /api/candidates`, ensuring unauthenticated users cannot read unredacted own PII or modify records when live Supabase is active.
+*   **4.2 Live Availability & Safe Resume Replacement**:
     *   Update `availability_status`, `available_from`, `overlap_hours_per_day`, target regions, work modes, portfolio links, and video pitch URL.
-    *   **Resume Replacement (`PATCH /api/candidates`)**: Uploading a new resume uploads the new private object to DigitalOcean Spaces, deletes the previous Spaces object and local cache (`oldResumeKey`), updates `resume_url` and `updated_at`, and exposes a cache-busted `View Current PDF` link.
+    *   **Resume Replacement (`PATCH /api/candidates`)**: Uploading a replacement resume uploads the new private object to DigitalOcean Spaces first and deletes the previous object (`oldResumeKey`) only after the new upload succeeds—preventing data loss if an upload fails—then updates `resume_url`, `updated_at`, and exposes a cache-busted `View Current PDF` link.
 
 ---
 
@@ -97,7 +98,8 @@ Unlike traditional applicant tracking systems (ATS), TalentPulse operates on an 
     *   **Technical Resume / Artifact Preview**: Displays attached resume filenames and private Spaces object paths paired with a cache-busted `View PDF` link (`&v={updated_at}`).
     *   Embedded YouTube/Loom video pitch preview and quick-copy email/contact actions.
 *   **5.3 Private DigitalOcean Spaces Storage & Proxy (`/api/candidates/resume`)**:
-    *   **Endpoint Normalization**: Ensures S3 requests target clean regional endpoints (`https://{region}.digitaloceanspaces.com`) without TLS certificate altname mismatches, with automatic path-style fallback and `WHEN_REQUIRED` checksum configuration for `@aws-sdk/client-s3` compatibility.
+    *   **Endpoint Normalization & Strict Credential Enforcement**: Ensures S3 requests target clean regional endpoints (`https://{region}.digitaloceanspaces.com`) without TLS certificate altname mismatches, with automatic path-style fallback, `WHEN_REQUIRED` checksum configuration for `@aws-sdk/client-s3` compatibility, and automatic runtime config invalidation when config files or env values change. Local disk/in-memory fallbacks are disabled—empty or `.env.example` placeholder credentials reject immediately with `DO_SPACES_NOT_CONFIGURED` (HTTP `503`).
+    *   **Actionable S3 Diagnostics**: Formats S3 errors (such as `InvalidAccessKeyId`, `SignatureDoesNotMatch`, and `NoSuchBucket`) into clear errors with explicit error codes without triggering unhandled runtime error overlays.
     *   **Private Proxy Streaming (`/api/candidates/resume`)**: Streams private PDF/DOC/DOCX objects using `Cache-Control: private, no-store, no-cache, must-revalidate` and `Pragma: no-cache`, returning `403` to unauthorized external requests.
 *   **5.4 Bulk Data Exporting**:
     *   **Native Excel (`.xlsx`) & CSV**: Formatted candidate exports with dynamic column widths, restricted to HR Executives and Super Admins.

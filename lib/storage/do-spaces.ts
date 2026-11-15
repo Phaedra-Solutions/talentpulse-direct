@@ -21,13 +21,53 @@ export interface DoSpacesConfig {
 }
 
 const STORAGE_CONFIG_FILE = path.join(process.cwd(), 'data', 'storage-config.json');
-const LOCAL_RESUMES_DIR = path.join(process.cwd(), 'data', 'resumes');
 const SECRET_KEY_SALT = 'talentpulse-do-spaces-secrets-v1';
 
-// In-memory runtime config cache
+export class DoSpacesConfigError extends Error {
+  readonly code: string;
+  readonly statusCode: number;
+
+  constructor(
+    message = 'DigitalOcean Spaces is not configured. Valid DO_SPACES_KEY, DO_SPACES_SECRET, and DO_SPACES_BUCKET credentials are required (empty or placeholder values are not permitted).',
+    code = 'DO_SPACES_NOT_CONFIGURED',
+    statusCode = 503
+  ) {
+    super(message);
+    this.name = 'DoSpacesConfigError';
+    this.code = code;
+    this.statusCode = statusCode;
+  }
+}
+
+// In-memory runtime config cache with file/env signature invalidation
 let cachedConfig: DoSpacesConfig | null = null;
+let cachedConfigSignature: string | null = null;
 let s3ClientInstanceVirtual: S3Client | null = null;
 let s3ClientInstancePathStyle: S3Client | null = null;
+
+function getFileStamp(filePath: string): string {
+  try {
+    if (!fs.existsSync(filePath)) return 'missing';
+    const stat = fs.statSync(filePath);
+    return `${stat.mtimeMs}:${stat.size}`;
+  } catch {
+    return 'err';
+  }
+}
+
+function getConfigSignature(): string {
+  const jwtSecretFile = path.join(process.cwd(), 'data', '.jwt_secret');
+  return [
+    getFileStamp(STORAGE_CONFIG_FILE),
+    getFileStamp(getEncryptedSecretsPath()),
+    getFileStamp(jwtSecretFile),
+    process.env.DO_SPACES_ENDPOINT || '',
+    process.env.DO_SPACES_REGION || '',
+    process.env.DO_SPACES_BUCKET || process.env.DO_SPACES_BUCKET_NAME || '',
+    process.env.DO_SPACES_KEY || process.env.DO_SPACES_ACCESS_KEY_ID || '',
+    process.env.DO_SPACES_SECRET || process.env.DO_SPACES_SECRET_ACCESS_KEY || '',
+  ].join('|');
+}
 
 function getEncryptedSecretsPath(): string {
   const candidates = [
@@ -91,9 +131,24 @@ function decryptSecretPayload(raw: string): { accessKey: string; secretKey: stri
 
 export function isMaskedOrEmptyCredential(value?: string): boolean {
   if (!value || typeof value !== 'string') return true;
-  const trimmed = value.trim();
+  const trimmed = value.trim().replace(/^["']|["']$/g, '').trim();
   if (!trimmed) return true;
   if (trimmed.includes('...') || trimmed.includes('••') || /^\*+$/.test(trimmed)) {
+    return true;
+  }
+  const lower = trimmed.toLowerCase();
+  if (
+    lower === 'do00examplekey123' ||
+    lower === 'example_secret_access_key_xyz' ||
+    lower.startsWith('your-') ||
+    lower.startsWith('your_') ||
+    lower.startsWith('my_') ||
+    lower.includes('examplekey') ||
+    lower.includes('example_secret') ||
+    lower.includes('placeholder') ||
+    lower === 'replace_me' ||
+    lower === 'changeme'
+  ) {
     return true;
   }
   return false;
@@ -222,9 +277,14 @@ export function normalizeSpacesEndpoint(
  * (or loaded from DO_SPACES_* environment variables).
  */
 export function getDoSpacesConfig(): DoSpacesConfig {
-  if (cachedConfig) {
+  const signature = getConfigSignature();
+  if (cachedConfig && cachedConfigSignature === signature) {
     return cachedConfig;
   }
+
+  // Signature changed (e.g., data/storage-config.json or credentials removed/updated)
+  s3ClientInstanceVirtual = null;
+  s3ClientInstancePathStyle = null;
 
   let fileConfig: Partial<DoSpacesConfig> = {};
   try {
@@ -273,12 +333,20 @@ export function getDoSpacesConfig(): DoSpacesConfig {
   const rawEndpoint = fileConfig.endpoint || process.env.DO_SPACES_ENDPOINT || 'https://nyc3.digitaloceanspaces.com';
   const rawRegion = fileConfig.region || process.env.DO_SPACES_REGION || 'nyc3';
   const bucket = fileConfig.bucket || process.env.DO_SPACES_BUCKET || process.env.DO_SPACES_BUCKET_NAME || 'talent-pulse-storage';
-  const accessKey =
-    encryptedCreds.accessKey ||
-    cleanCredentialValue(process.env.DO_SPACES_KEY || process.env.DO_SPACES_ACCESS_KEY_ID || '');
-  const secretKey =
-    encryptedCreds.secretKey ||
-    cleanCredentialValue(process.env.DO_SPACES_SECRET || process.env.DO_SPACES_SECRET_ACCESS_KEY || '');
+
+  const envAccessKey = cleanCredentialValue(process.env.DO_SPACES_KEY || process.env.DO_SPACES_ACCESS_KEY_ID || '');
+  const envSecretKey = cleanCredentialValue(process.env.DO_SPACES_SECRET || process.env.DO_SPACES_SECRET_ACCESS_KEY || '');
+
+  const rawAccessKey = !isMaskedOrEmptyCredential(encryptedCreds.accessKey)
+    ? encryptedCreds.accessKey
+    : !isMaskedOrEmptyCredential(envAccessKey)
+      ? envAccessKey
+      : '';
+  const rawSecretKey = !isMaskedOrEmptyCredential(encryptedCreds.secretKey)
+    ? encryptedCreds.secretKey
+    : !isMaskedOrEmptyCredential(envSecretKey)
+      ? envSecretKey
+      : '';
 
   const normalized = normalizeSpacesEndpoint(rawEndpoint, bucket, rawRegion);
 
@@ -286,9 +354,10 @@ export function getDoSpacesConfig(): DoSpacesConfig {
     endpoint: normalized.endpoint,
     region: normalized.region,
     bucket: bucket.trim(),
-    accessKey: cleanCredentialValue(accessKey),
-    secretKey: cleanCredentialValue(secretKey),
+    accessKey: cleanCredentialValue(rawAccessKey),
+    secretKey: cleanCredentialValue(rawSecretKey),
   };
+  cachedConfigSignature = getConfigSignature();
 
   return cachedConfig;
 }
@@ -409,20 +478,43 @@ export function saveDoSpacesConfig(newConfig: Partial<DoSpacesConfig>): DoSpaces
       writeEncryptedCredentials(merged.accessKey, merged.secretKey);
     }
   } catch (err) {
-    console.error('[DO Spaces] Failed saving config:', err);
+    console.warn('[DO Spaces] Failed saving config:', err instanceof Error ? err.message : err);
   }
 
   // Invalidate cache and client instances
   cachedConfig = merged;
+  cachedConfigSignature = getConfigSignature();
   s3ClientInstanceVirtual = null;
   s3ClientInstancePathStyle = null;
 
   return merged;
 }
 
+function isPlaceholderBucket(bucket?: string): boolean {
+  if (!bucket || typeof bucket !== 'string') return true;
+  const lower = bucket.trim().toLowerCase();
+  return !lower || lower === 'your-spaces-bucket' || lower === 'your_spaces_bucket';
+}
+
 export function isDoSpacesConfigured(): boolean {
   const cfg = getDoSpacesConfig();
-  return Boolean(cfg.accessKey && cfg.secretKey && cfg.bucket);
+  return Boolean(
+    !isMaskedOrEmptyCredential(cfg.accessKey) &&
+    !isMaskedOrEmptyCredential(cfg.secretKey) &&
+    !isPlaceholderBucket(cfg.bucket)
+  );
+}
+
+export function assertDoSpacesConfigured(customConfig?: Partial<DoSpacesConfig>): DoSpacesConfig {
+  const cfg = customConfig ? { ...getDoSpacesConfig(), ...customConfig } : getDoSpacesConfig();
+  if (
+    isMaskedOrEmptyCredential(cfg.accessKey) ||
+    isMaskedOrEmptyCredential(cfg.secretKey) ||
+    isPlaceholderBucket(cfg.bucket)
+  ) {
+    throw new DoSpacesConfigError();
+  }
+  return cfg;
 }
 
 function buildS3Client(config: {
@@ -447,10 +539,11 @@ function buildS3Client(config: {
 
 /**
  * Creates or retrieves S3 client instance configured for DigitalOcean Spaces.
+ * Throws DoSpacesConfigError (DO_SPACES_NOT_CONFIGURED) if credentials are empty or placeholders.
  * Supports both virtual-host-style (default) and path-style addressing.
  */
 export function getDoSpacesClient(customConfig?: Partial<DoSpacesConfig>, forcePathStyle: boolean = false): S3Client {
-  const base = customConfig ? { ...getDoSpacesConfig(), ...customConfig } : getDoSpacesConfig();
+  const base = assertDoSpacesConfigured(customConfig);
   const normalized = normalizeSpacesEndpoint(base.endpoint, base.bucket, base.region);
 
   if (customConfig) {
@@ -537,10 +630,14 @@ export async function testDoSpacesConnection(testConfig?: Partial<DoSpacesConfig
     secretKey: resolvedSecretKey,
   };
 
-  if (!config.accessKey || !config.secretKey || !config.bucket) {
+  if (
+    isMaskedOrEmptyCredential(config.accessKey) ||
+    isMaskedOrEmptyCredential(config.secretKey) ||
+    isPlaceholderBucket(config.bucket)
+  ) {
     return {
       success: false,
-      message: 'Access Key, Secret Key, and Bucket Name are required to test connection. Please ensure all credentials are provided.',
+      message: 'Valid Access Key, Secret Key, and Bucket Name are required (empty or placeholder values are not allowed).',
       bucket: config.bucket,
       endpoint: config.endpoint,
     };
@@ -695,41 +792,9 @@ export interface UploadResumeResult {
   bucket: string;
   filename: string;
   sizeBytes: number;
-  isSimulated?: boolean;
+  code?: string;
+  statusCode?: number;
   error?: string;
-}
-
-// In-memory fallback store
-const inMemoryResumeStore = new Map<string, { buffer: Buffer; contentType: string; filename: string }>();
-
-/**
- * Helper to cache file locally to disk under data/resumes/...
- */
-export function cacheResumeLocally(storageKey: string, buffer: Buffer): void {
-  try {
-    const fullPath = path.join(LOCAL_RESUMES_DIR, storageKey);
-    const parentDir = path.dirname(fullPath);
-    if (!fs.existsSync(parentDir)) {
-      fs.mkdirSync(parentDir, { recursive: true });
-    }
-    fs.writeFileSync(fullPath, buffer);
-  } catch (err) {
-    console.warn('[DO Spaces] Local disk caching warning:', err);
-  }
-}
-
-/**
- * Helper to delete locally cached file
- */
-export function deleteLocalResumeCache(storageKey: string): void {
-  try {
-    const fullPath = path.join(LOCAL_RESUMES_DIR, storageKey);
-    if (fs.existsSync(fullPath)) {
-      fs.unlinkSync(fullPath);
-    }
-  } catch (err) {
-    console.warn('[DO Spaces] Failed deleting local disk resume:', err);
-  }
 }
 
 /**
@@ -816,36 +881,11 @@ export async function uploadResumeToSpaces(params: UploadResumeParams): Promise<
   const buffer = Buffer.isBuffer(fileBuffer) ? fileBuffer : Buffer.from(fileBuffer);
   const cfg = getDoSpacesConfig();
 
-  // Cache locally on disk immediately
-  cacheResumeLocally(newStorageKey, buffer);
-
-  // Store in memory map
-  inMemoryResumeStore.set(newStorageKey, { buffer, contentType, filename });
-
-  // Requirement: "Updating the resume file by the candidate should delete the previously saved file and add the new file in replacement."
-  if (oldResumeKey && oldResumeKey !== newStorageKey) {
-    try {
-      await deleteResumeFromSpaces(oldResumeKey);
-    } catch (err) {
-      console.warn(`[DO Spaces] Failed to delete previous resume at key "${oldResumeKey}":`, err);
-    }
-  }
-
-  if (!isDoSpacesConfigured()) {
-    console.warn('[DO Spaces] DO_SPACES_KEY or DO_SPACES_SECRET not set. Stored resume on disk and in memory.');
-    return {
-      success: true,
-      storageKey: newStorageKey,
-      bucket: cfg.bucket,
-      filename,
-      sizeBytes: buffer.length,
-      isSimulated: true,
-    };
-  }
-
   try {
+    const validCfg = assertDoSpacesConfigured();
+
     await sendPutObjectWithFallbacks(
-      cfg.bucket,
+      validCfg.bucket,
       newStorageKey,
       buffer,
       contentType,
@@ -856,46 +896,63 @@ export async function uploadResumeToSpaces(params: UploadResumeParams): Promise<
       }
     );
 
+    // Delete previous resume only after the replacement upload succeeds
+    if (oldResumeKey && oldResumeKey !== newStorageKey) {
+      try {
+        await deleteResumeFromSpaces(oldResumeKey);
+      } catch (err) {
+        console.warn(`[DO Spaces] Failed to delete previous resume at key "${oldResumeKey}":`, err);
+      }
+    }
+
     return {
       success: true,
       storageKey: newStorageKey,
-      bucket: cfg.bucket,
+      bucket: validCfg.bucket,
       filename,
       sizeBytes: buffer.length,
     };
   } catch (err: any) {
-    console.error('[DO Spaces] Upload failed:', err);
-    // File is safely cached locally on disk so users and candidates never lose data
+    if (err instanceof DoSpacesConfigError) {
+      console.warn(`[DO Spaces] Upload rejected (${err.code}): ${err.message}`);
+      return {
+        success: false,
+        storageKey: newStorageKey,
+        bucket: cfg.bucket,
+        filename,
+        sizeBytes: buffer.length,
+        code: err.code,
+        statusCode: err.statusCode,
+        error: err.message,
+      };
+    }
+
+    const formattedError = formatDoSpacesError(err, cfg);
+    const errorCode = (err?.name || err?.Code || err?.code || 'DO_SPACES_UPLOAD_FAILED').trim();
+    console.warn(`[DO Spaces] Upload failed (${errorCode}): ${formattedError}`);
     return {
       success: false,
       storageKey: newStorageKey,
       bucket: cfg.bucket,
       filename,
       sizeBytes: buffer.length,
-      error: err.message || 'Failed to upload to DigitalOcean Spaces',
+      code: errorCode,
+      statusCode: 502,
+      error: formattedError,
     };
   }
 }
 
 /**
- * Deletes a candidate resume from DigitalOcean Spaces and local cache
+ * Deletes a candidate resume from DigitalOcean Spaces.
+ * Returns false if credentials are not configured or deletion fails.
  */
 export async function deleteResumeFromSpaces(storageKey: string): Promise<boolean> {
   if (!storageKey) return false;
 
-  // Clean in-memory fallback store
-  inMemoryResumeStore.delete(storageKey);
-
-  // Clean local disk cache
-  deleteLocalResumeCache(storageKey);
-
-  if (!isDoSpacesConfigured()) {
-    return true;
-  }
-
   try {
+    const cfg = assertDoSpacesConfigured();
     const s3 = getDoSpacesClient(undefined, false);
-    const cfg = getDoSpacesConfig();
     try {
       await s3.send(new DeleteObjectCommand({
         Bucket: cfg.bucket,
@@ -913,14 +970,19 @@ export async function deleteResumeFromSpaces(storageKey: string): Promise<boolea
       }
     }
     return true;
-  } catch (err) {
-    console.error(`[DO Spaces] Error deleting object "${storageKey}":`, err);
+  } catch (err: any) {
+    if (err instanceof DoSpacesConfigError) {
+      console.warn(`[DO Spaces] Delete skipped (${err.code}): ${err.message}`);
+      return false;
+    }
+    console.warn(`[DO Spaces] Error deleting object "${storageKey}": ${formatDoSpacesError(err, getDoSpacesConfig())}`);
     return false;
   }
 }
 
 /**
- * Downloads a resume object directly from DO Spaces or local cache for internal streaming to authorized users
+ * Downloads a resume object directly from DigitalOcean Spaces for internal streaming to authorized users.
+ * Throws DoSpacesConfigError (DO_SPACES_NOT_CONFIGURED) when credentials are empty or placeholders.
  */
 export async function getResumeObjectStream(storageKey: string): Promise<{
   stream?: NodeJS.ReadableStream | ReadableStream | null;
@@ -929,41 +991,9 @@ export async function getResumeObjectStream(storageKey: string): Promise<{
   contentLength?: number;
   filename: string;
 } | null> {
-  // 1. Check memory store
-  if (inMemoryResumeStore.has(storageKey)) {
-    const item = inMemoryResumeStore.get(storageKey)!;
-    return {
-      buffer: item.buffer,
-      contentType: item.contentType,
-      contentLength: item.buffer.length,
-      filename: item.filename,
-    };
-  }
-
-  // 2. Check local disk cache
-  try {
-    const localFilePath = path.join(LOCAL_RESUMES_DIR, storageKey);
-    if (fs.existsSync(localFilePath)) {
-      const fileBuf = fs.readFileSync(localFilePath);
-      const filename = storageKey.split('/').pop() || 'resume.pdf';
-      return {
-        buffer: fileBuf,
-        contentType: 'application/pdf',
-        contentLength: fileBuf.length,
-        filename,
-      };
-    }
-  } catch (err) {
-    console.warn('[DO Spaces] Local disk read error:', err);
-  }
-
-  // 3. Check DigitalOcean Spaces S3 bucket
-  if (!isDoSpacesConfigured()) {
-    return null;
-  }
+  const cfg = assertDoSpacesConfigured();
 
   try {
-    const cfg = getDoSpacesConfig();
     let response: any = null;
 
     try {
@@ -990,11 +1020,9 @@ export async function getResumeObjectStream(storageKey: string): Promise<{
       ? decodeURIComponent(response.Metadata['original-filename']) 
       : storageKey.split('/').pop() || 'resume.pdf';
 
-    // If body can be converted to buffer, cache locally
     if (response.Body && typeof (response.Body as any).transformToByteArray === 'function') {
       const bytes = await (response.Body as any).transformToByteArray();
       const buf = Buffer.from(bytes);
-      cacheResumeLocally(storageKey, buf);
       return {
         buffer: buf,
         contentType,
@@ -1009,23 +1037,26 @@ export async function getResumeObjectStream(storageKey: string): Promise<{
       contentLength,
       filename: metadataFilename,
     };
-  } catch (err) {
-    console.warn(`[DO Spaces] GetObject failed for "${storageKey}": ${formatDoSpacesError(err, getDoSpacesConfig())}`);
-    return null;
+  } catch (err: any) {
+    const code = (err?.name || err?.Code || err?.code || '').trim();
+    const formatted = formatDoSpacesError(err, cfg);
+    console.warn(`[DO Spaces] GetObject failed for "${storageKey}": ${formatted}`);
+    if (code === 'NoSuchKey') {
+      return null;
+    }
+    throw new DoSpacesConfigError(formatted, code || 'DO_SPACES_READ_FAILED', 502);
   }
 }
 
 /**
- * Generates a short-lived presigned download URL (valid for authorized internal sessions only)
+ * Generates a short-lived presigned download URL (valid for authorized internal sessions only).
+ * Throws DoSpacesConfigError (DO_SPACES_NOT_CONFIGURED) when credentials are empty or placeholders.
  */
 export async function getResumeSignedDownloadUrl(storageKey: string, expiresInSeconds = 300): Promise<string | null> {
-  if (!isDoSpacesConfigured()) {
-    return null;
-  }
+  const cfg = assertDoSpacesConfigured();
 
   try {
     const s3 = getDoSpacesClient(undefined, false);
-    const cfg = getDoSpacesConfig();
     const command = new GetObjectCommand({
       Bucket: cfg.bucket,
       Key: storageKey,
@@ -1034,7 +1065,7 @@ export async function getResumeSignedDownloadUrl(storageKey: string, expiresInSe
     const url = await getSignedUrl(s3, command, { expiresIn: expiresInSeconds });
     return url;
   } catch (err) {
-    console.error(`[DO Spaces] Failed to generate signed URL for "${storageKey}":`, err);
+    console.warn(`[DO Spaces] Failed to generate signed URL for "${storageKey}": ${formatDoSpacesError(err, cfg)}`);
     return null;
   }
 }

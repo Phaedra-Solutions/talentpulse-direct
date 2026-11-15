@@ -37,6 +37,31 @@ function sanitizeCandidateForPublic(c: Candidate): Candidate {
   };
 }
 
+function sanitizeCandidateForSelfService(c: Candidate): Candidate {
+  return {
+    ...c,
+    internal_notes: '',
+  };
+}
+
+async function getVerifiedSupabaseCandidateEmail(
+  req: NextRequest,
+  supabase: ReturnType<typeof getSupabaseServerClient>
+): Promise<string | null> {
+  if (!supabase || !isServerSupabaseConfigured) return null;
+  const authHeader = req.headers.get('authorization');
+  const token = authHeader?.replace(/^Bearer\s+/i, '').trim();
+  if (!token || token.split('.').length !== 3) return null;
+
+  try {
+    const { data, error } = await supabase.auth.getUser(token);
+    if (error || !data?.user?.email) return null;
+    return data.user.email.trim().toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
 // Helper to safely map application roles to existing Supabase DB enum values
 function toDbCandidateData(candidate: any) {
   const data = { ...candidate };
@@ -153,9 +178,13 @@ export async function GET(req: NextRequest) {
     const { data, error } = await query.order('created_at', { ascending: false });
     if (!error && data) {
       let formatted = data.map(fromDbCandidate);
-      // If not authenticated admin (candidate self-service email lookup), redact internal notes & phone
       if (!isAdmin) {
-        formatted = formatted.map(sanitizeCandidateForPublic);
+        const verifiedEmail = await getVerifiedSupabaseCandidateEmail(req, supabase);
+        formatted = formatted.map((c) =>
+          verifiedEmail && c.email?.trim().toLowerCase() === verifiedEmail
+            ? sanitizeCandidateForSelfService(c)
+            : sanitizeCandidateForPublic(c)
+        );
       }
       return NextResponse.json({ candidates: formatted, source: 'supabase' });
     }
@@ -203,8 +232,11 @@ export async function POST(req: NextRequest) {
           resumeStorageKey = uploadRes.storageKey;
         } else {
           return NextResponse.json(
-            { error: `Failed to store resume in DigitalOcean Spaces: ${uploadRes.error || 'Upload failed'}` },
-            { status: 502 }
+            {
+              error: uploadRes.error || 'Failed to store resume in DigitalOcean Spaces',
+              code: uploadRes.code || 'DO_SPACES_UPLOAD_FAILED',
+            },
+            { status: uploadRes.statusCode || 502 }
           );
         }
       }
@@ -278,15 +310,32 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: 'Candidate email or id is required for updates' }, { status: 400 });
     }
 
+    const adminSession = getAuthenticatedAdmin(req);
+    const isAdmin = Boolean(adminSession && canAccessCandidatePipeline(adminSession.role));
+
     // Pipeline stage and internal notes modifications require authenticated admin
     if (updates.pipeline_stage !== undefined || updates.internal_notes !== undefined) {
-      const auth = requireAdminAuth(req, canAccessCandidatePipeline);
-      if (auth.errorResponse) {
-        return auth.errorResponse;
+      if (!isAdmin) {
+        const auth = requireAdminAuth(req, canAccessCandidatePipeline);
+        if (auth.errorResponse) {
+          return auth.errorResponse;
+        }
       }
     }
 
     const supabase = getSupabaseServerClient();
+
+    // When live Supabase is configured, require either an authorized admin or a verified Supabase OTP session matching the candidate email
+    if (supabase && isServerSupabaseConfigured && !isAdmin) {
+      const verifiedEmail = await getVerifiedSupabaseCandidateEmail(req, supabase);
+      const targetEmail = typeof email === 'string' ? email.trim().toLowerCase() : '';
+      if (!verifiedEmail || (targetEmail && verifiedEmail !== targetEmail)) {
+        return NextResponse.json(
+          { error: 'Verification Required: Please verify your email via OTP before updating your profile.' },
+          { status: 401 }
+        );
+      }
+    }
 
     // Look up existing candidate to handle resume deletion/replacement
     let existingCandidate: any = null;
@@ -320,8 +369,11 @@ export async function PATCH(req: NextRequest) {
           updates.resume_url = uploadRes.storageKey;
         } else {
           return NextResponse.json(
-            { error: `Failed to store replacement resume in DigitalOcean Spaces: ${uploadRes.error || 'Upload failed'}` },
-            { status: 502 }
+            {
+              error: uploadRes.error || 'Failed to store replacement resume in DigitalOcean Spaces',
+              code: uploadRes.code || 'DO_SPACES_UPLOAD_FAILED',
+            },
+            { status: uploadRes.statusCode || 502 }
           );
         }
       }
@@ -331,10 +383,28 @@ export async function PATCH(req: NextRequest) {
     }
 
     if (supabase && isServerSupabaseConfigured) {
+      if (supabase && isServerSupabaseConfigured && !isAdmin) {
+        const verifiedEmail = await getVerifiedSupabaseCandidateEmail(req, supabase);
+        const ownerEmail = existingCandidate?.email?.trim().toLowerCase();
+        if (!verifiedEmail || !ownerEmail || verifiedEmail !== ownerEmail) {
+          return NextResponse.json(
+            { error: 'Verification Required: Authenticated email does not match the target candidate record.' },
+            { status: 403 }
+          );
+        }
+      }
+
       const payload: any = {
         ...updates,
         updated_at: new Date().toISOString(),
       };
+      if (!isAdmin) {
+        delete payload.pipeline_stage;
+        delete payload.internal_notes;
+        delete payload.id;
+        delete payload.user_id;
+        delete payload.email;
+      }
 
       if (payload.primary_role) {
         const mapped = toDbCandidateData(payload);
@@ -356,7 +426,11 @@ export async function PATCH(req: NextRequest) {
       if (error) {
         return NextResponse.json({ error: error.message }, { status: 400 });
       }
-      return NextResponse.json({ candidate: fromDbCandidate(data), source: 'supabase' });
+      const formatted = fromDbCandidate(data);
+      return NextResponse.json({
+        candidate: isAdmin ? formatted : sanitizeCandidateForSelfService(formatted),
+        source: 'supabase',
+      });
     }
 
     return NextResponse.json({

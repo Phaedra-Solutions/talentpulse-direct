@@ -3,7 +3,7 @@ import { getSupabaseServerClient, isServerSupabaseConfigured } from '@/lib/supab
 import { INITIAL_MOCK_CANDIDATES } from '@/lib/mock-data';
 import { getAuthenticatedAdmin } from '@/lib/auth/server-auth';
 import { canAccessCandidatePipeline } from '@/lib/auth/permissions';
-import { getResumeObjectStream, isDoSpacesConfigured } from '@/lib/storage/do-spaces';
+import { DoSpacesConfigError, getResumeObjectStream, isDoSpacesConfigured } from '@/lib/storage/do-spaces';
 
 function generatePdfDossierBuffer(candidate: any): Buffer {
   const name = candidate.full_name || 'Candidate Engineer';
@@ -175,31 +175,52 @@ export async function GET(req: NextRequest) {
     resolvedStorageKey = resumeUrl;
   }
 
-  // Case 1: Stored in DigitalOcean Spaces / Local Disk Cache under "Talent Pulse/..."
+  // Case 1: Stored in DigitalOcean Spaces under "Talent Pulse/..."
   if (resolvedStorageKey) {
-    const objectData = await getResumeObjectStream(resolvedStorageKey);
-
-    if (objectData) {
-      headers.set('Content-Type', objectData.contentType || 'application/pdf');
-      headers.set(
-        'Content-Disposition',
-        `${disposition}; filename="${encodeURIComponent(objectData.filename || resumeFilename)}"`
+    if (!isDoSpacesConfigured()) {
+      return NextResponse.json(
+        {
+          error: 'DigitalOcean Spaces storage is not configured. Valid DO_SPACES_KEY, DO_SPACES_SECRET, and DO_SPACES_BUCKET credentials are required.',
+          code: 'DO_SPACES_NOT_CONFIGURED',
+        },
+        { status: 503 }
       );
+    }
 
-      if (objectData.buffer) {
-        return new NextResponse(new Uint8Array(objectData.buffer), { status: 200, headers });
+    try {
+      const objectData = await getResumeObjectStream(resolvedStorageKey);
+
+      if (objectData) {
+        headers.set('Content-Type', objectData.contentType || 'application/pdf');
+        headers.set(
+          'Content-Disposition',
+          `${disposition}; filename="${encodeURIComponent(objectData.filename || resumeFilename)}"`
+        );
+
+        if (objectData.buffer) {
+          return new NextResponse(new Uint8Array(objectData.buffer), { status: 200, headers });
+        }
+
+        if (objectData.stream) {
+          return new NextResponse(objectData.stream as any, { status: 200, headers });
+        }
       }
-
-      if (objectData.stream) {
-        return new NextResponse(objectData.stream as any, { status: 200, headers });
+    } catch (err: any) {
+      if (err instanceof DoSpacesConfigError || err?.code) {
+        return NextResponse.json(
+          { error: err.message, code: err.code || 'DO_SPACES_ERROR' },
+          { status: err.statusCode || 502 }
+        );
       }
     }
 
-    // If file buffer not found in S3 or disk yet, return a clean synthesized PDF dossier
-    const fallbackBuffer = generatePdfDossierBuffer(candidate);
-    headers.set('Content-Type', 'application/pdf');
-    headers.set('Content-Disposition', `${disposition}; filename="${encodeURIComponent(resumeFilename)}"`);
-    return new NextResponse(new Uint8Array(fallbackBuffer), { status: 200, headers });
+    return NextResponse.json(
+      {
+        error: 'Resume object could not be retrieved from DigitalOcean Spaces.',
+        code: 'DO_SPACES_OBJECT_NOT_FOUND',
+      },
+      { status: 404 }
+    );
   }
 
   // Case 2: Resume is a Base64 data URI

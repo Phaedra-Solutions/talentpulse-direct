@@ -31,7 +31,7 @@
 Traditional applicant tracking software is clunky, hides critical technical data behind multiple clicks, and frustrates candidates with lengthy sign-up walls. TalentPulse Direct provides:
 1. **Frictionless Candidate Applications:** A fast multi-step intake workflow (`/apply`) with direct PDF/DOC/DOCX resume upload, dynamic role tracks, and dual affirmative legal consent.
 2. **Private Resume Storage & Streaming:** Resumes are stored as private objects in DigitalOcean Spaces (`Talent Pulse/{Month-Year}/candidate/{candidateId}_{filename}`) and served exclusively through an authenticated server-side proxy (`/api/candidates/resume`).
-3. **Candidate Self-Service:** Secure OTP verification (`/candidate/update`) allowing candidates to update availability, timezone overlap, and replace their resume (automatically deleting the previous object).
+3. **Candidate Self-Service:** Passwordless Supabase Email OTP verification (`/candidate/update`, compatible with custom Google SMTP) with verified JWT-gated access to update availability, timezone overlap, and safely replace resumes (deleting the previous object only after the new upload succeeds).
 4. **Enterprise-Grade Admin Controls:** Role-based access control (`Super Admin`, `Sales Executive`, `HR Executive`), 1-click cryptographic invite links, mandatory first-login password rotation, and bulk `.xlsx`/`.csv` exports.
 
 ---
@@ -55,8 +55,8 @@ TalentPulse Direct maintains comprehensive architecture, security, and legal doc
 | :--- | :--- |
 | ⚡ **Public Application Portal** | High-throughput intake form (`/apply`) with Zod validation, direct resume upload (up to 10 MB), dynamic role tracks (`/roles/[slug]`), and dual legal consent. |
 | 💼 **Client Hire Portal** | Enterprise staffing intake form (`/hire`) with project scoping, budget bands, and dual terms/privacy consent. |
-| 🔄 **Candidate Self-Service** | OTP-verified candidate portal (`/candidate/update`) for real-time availability, timezone overlap adjustments, and live resume replacement. |
-| ☁️ **Private DO Spaces Resume Vault** | Stores resumes privately under `Talent Pulse/{Month-Year}/candidate/{candidateId}_{filename}` with regional endpoint normalization and private authenticated proxy streaming (`/api/candidates/resume`). |
+| 🔄 **Candidate Self-Service** | Supabase Email OTP-verified portal (`/candidate/update`, custom Google SMTP ready) with JWT-gated availability updates and atomic-safe resume replacement. |
+| ☁️ **Private DO Spaces Resume Vault** | Stores resumes privately under `Talent Pulse/{Month-Year}/candidate/{candidateId}_{filename}` with regional endpoint normalization, strict credential enforcement (`DO_SPACES_NOT_CONFIGURED`), and private proxy streaming (`/api/candidates/resume`). |
 | 📊 **Recruiter Command Center** | High-density table & Kanban pipeline (`/admin/dashboard`) with candidate dossiers, private PDF previews, and stage audit notes. |
 | 📥 **Bulk Excel & CSV Export** | Formatted `.xlsx` and `.csv` candidate exports with dynamic column sizing, restricted to HR Executives and Super Admins. |
 | 👥 **Granular Admin RBAC** | Multi-tier clearance (`Super Admin`, `Sales Executive`, `HR Executive`) enforced via HMAC-SHA256 `admin_session` cookies and Bearer tokens. |
@@ -142,6 +142,10 @@ The initial super admin account is seeded as `admin@talentpulse.com`. **Rotate t
 ```bash
 npm run reset-admin
 ```
+
+> **Note on Candidate Email OTP & Resume Storage:**
+> - For live candidate Email OTP codes on `/candidate/update`, configure a custom SMTP provider (such as Google SMTP) in **Supabase Dashboard → Authentication → SMTP Settings** and include `{{ .Token }}` in the **Magic Link** / **Confirm signup** email template.
+> - Valid `DO_SPACES_*` credentials (non-empty, non-placeholder) are strictly required for uploading or streaming resumes; otherwise API handlers fail explicitly with `DO_SPACES_NOT_CONFIGURED` (HTTP `503`).
 
 ### 5. Start Development Server
 ```bash

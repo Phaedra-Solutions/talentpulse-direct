@@ -69,9 +69,9 @@ Server-side route handlers enforce `requireAdminAuth(req, permissionCheck)` from
 
 | Endpoint Route | HTTP Method | Permission Helper / Rule | Unauthenticated | Unauthorized Role | Authorized Success |
 | :--- | :---: | :--- | :---: | :---: | :---: |
-| `/api/candidates` | `GET` | Public PII-Redacted / Admin Full | `200` *(Redacted)* | N/A | `200` *(Full PII)* |
-| `/api/candidates` | `POST` | Public Intake Application *(Spaces upload required)* | `201 Created` | N/A | `201 Created` |
-| `/api/candidates` | `PATCH` | `canAccessCandidatePipeline` or Self-Service Email Match | `401` *(or Self-Update)* | `403 Forbidden` | `200 OK` |
+| `/api/candidates` | `GET` | Public PII-Redacted / Verified Candidate Own Record *(Bearer JWT)* / Admin Full | `200` *(Redacted)* | N/A | `200` *(Own Record / Full PII)* |
+| `/api/candidates` | `POST` | Public Intake Application *(DO Spaces required for resumes; `503 DO_SPACES_NOT_CONFIGURED` if unconfigured)* | `201 Created` | N/A | `201 Created` |
+| `/api/candidates` | `PATCH` | `canAccessCandidatePipeline` or Verified Supabase Candidate Email JWT | `401 Unauthorized` | `403 Forbidden` | `200 OK` |
 | `/api/candidates/[id]` | `GET` / `PATCH` | `canAccessCandidatePipeline` | `401 Unauthorized` | `403 Forbidden` | `200 OK` |
 | `/api/candidates/resume` | `GET` | Admin Session, Candidate Owner Email, Query Token, or Internal Referer | `403 Forbidden` | `403 Forbidden` | `200 OK` *(`no-store` stream)* |
 | `/api/hire-requests` | `GET` | `canAccessHireRequests` | `401 Unauthorized` | `403 Forbidden` *(HR)* | `200 OK` *(Sales, Super)* |
@@ -118,3 +118,6 @@ Under our Privacy Policy and GDPR Article 5(1)(c) data minimization principles, 
    - Transport: HTTP-Only, `SameSite=None`, `Secure` cookie (`admin_session`) plus `Authorization: Bearer <token>` / `x-admin-token` header support.
 3. **Password Rotation**:
    - Newly provisioned or password-reset admin accounts are flagged `must_change_password: true` and forced onto `/admin/change-password` before accessing dashboard tools.
+4. **Candidate Self-Service OTP Authentication**:
+   - Candidates verify ownership via Supabase Auth Email OTP (`/candidate/update`), obtaining a short-lived Supabase session JWT sent via `Authorization: Bearer <token>`.
+   - `/api/candidates` (`GET` and `PATCH`) validates the token server-side via `supabase.auth.getUser(token)` and restricts access strictly to records whose `email` matches the verified JWT email.

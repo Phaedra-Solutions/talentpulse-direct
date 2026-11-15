@@ -58,6 +58,7 @@ TalentPulse adheres to strict global data protection standards (GDPR, CCPA/CPRA,
 ### Data Subject Requests (DSR) & PII Protection
 - **DSR Requests**: Candidates or clients exercising rights of access, rectification, portability, or erasure ("Right to Be Forgotten") may submit requests directly to **`privacy@talentpulse.dev`** or **`legal@talentpulse.dev`**. All verified DSRs are fulfilled within statutory deadlines (30 days GDPR/PIPEDA, 45 days CCPA).
 - **Candidate Anonymity & PII Redaction**: Unauthenticated/anonymous traffic is prohibited from accessing full candidate contact information (phone numbers, full addresses, un-redacted contact details). Public candidate views redact PII, displaying only verified technical credentials, role, timezone, and portfolio work.
+- **Verified Candidate Self-Service (`Authorization: Bearer <jwt>`)**: When live Supabase is configured, `GET` and `PATCH /api/candidates` validate the candidate's Supabase Email OTP JWT server-side (`supabase.auth.getUser(token)`) before revealing unredacted contact details or permitting self-service edits for the matching email address.
 - **Access Control & Permissions**: All administrative actions, hiring pipelines, and candidate reviews are strictly governed by the 5-tier role-based access control (RBAC) model defined in [`docs/PERMISSIONS_MATRIX.md`](docs/PERMISSIONS_MATRIX.md).
 
 ---
@@ -65,6 +66,7 @@ TalentPulse adheres to strict global data protection standards (GDPR, CCPA/CPRA,
 ## Private Resume Storage & Credential Security
 
 - **Private DigitalOcean Spaces Objects (`ACL: private`)**: Candidate resumes are uploaded under `Talent Pulse/{Month-Year}/candidate/{candidateId}_{filename}` with private access control. Direct bucket URLs are never relied on for unauthenticated public access.
+- **Atomic-Safe Replacement & Strict Credential Enforcement**: Replacement uploads verify that the new DigitalOcean Spaces upload succeeds before deleting the previous `oldResumeKey` object. Masked or `.env.example` placeholder keys are rejected explicitly (`DO_SPACES_NOT_CONFIGURED` / HTTP `503`) with no local disk or memory fallback, and runtime config caches invalidate immediately when storage config or `.jwt_secret` files change.
 - **Authenticated Proxy Streaming (`/api/candidates/resume`)**: Resumes are streamed server-side exclusively to authorized administrators, matching candidate owners, or verified internal app contexts with `Cache-Control: private, no-store, no-cache, must-revalidate` and `Pragma: no-cache`. Unauthorized external requests receive `403 Forbidden`.
 
 ---
@@ -72,7 +74,7 @@ TalentPulse adheres to strict global data protection standards (GDPR, CCPA/CPRA,
 ## Security Best Practices for Self-Hosting
 
 When deploying TalentPulse to production:
-- **Environment Secrets:** Never commit `.env`, `.env.local`, `data/.jwt_secret`, or `data/resumes/`. Store `SUPABASE_SECRET_KEY`, `JWT_SECRET`, `DO_SPACES_KEY`, `DO_SPACES_SECRET`, and `GEMINI_API_KEY` strictly in server-side secret managers.
+- **Environment Secrets:** Never commit `.env`, `.env.local`, or `data/.jwt_secret`. Store `SUPABASE_SECRET_KEY`, `JWT_SECRET`, `DO_SPACES_KEY`, `DO_SPACES_SECRET`, and `GEMINI_API_KEY` strictly in server-side secret managers.
 - **Signing Secret (`JWT_SECRET`):** Set a dedicated high-entropy `JWT_SECRET` in production so HMAC-SHA256 admin sessions remain consistent across container restarts.
 - **Cryptographic Authentication:** Admin and staff authentication utilizes PBKDF2 SHA-512 with 100,000 iterations and per-user 16-byte cryptographic salts. Passwords are never stored in plaintext.
 - **Row-Level Security (RLS):** Ensure PostgreSQL RLS policies in `schema.sql` are active for all tables.

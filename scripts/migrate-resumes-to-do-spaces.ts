@@ -177,7 +177,7 @@ export async function runResumeMigration() {
         date: createdDate,
       });
 
-      if (!uploadRes.success || uploadRes.isSimulated) {
+      if (!uploadRes.success) {
         throw new Error(uploadRes.error || 'Upload did not reach DigitalOcean Spaces.');
       }
 

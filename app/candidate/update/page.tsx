@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -51,16 +51,26 @@ export default function CandidateUpdatePage() {
   const [newResumeFileName, setNewResumeFileName] = useState<string | null>(null);
   const [resumeUploadNotice, setResumeUploadNotice] = useState<string | null>(null);
 
-  // Secure Auth State (Email OTP / Magic Link - $0 cost solution)
+  // Secure Auth State (Supabase Email OTP)
   const [otpStep, setOtpStep] = useState<'input_email' | 'enter_otp' | 'authenticated'>('input_email');
   const [otpCode, setOtpCode] = useState('');
   const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
+  const [isResendingOtp, setIsResendingOtp] = useState(false);
+  const [resendCooldown, setResendCooldown] = useState(0);
   const [otpError, setOtpError] = useState<string | null>(null);
-  const [simulatedOtp, setSimulatedOtp] = useState<string>('742918');
+  const [otpNotice, setOtpNotice] = useState<string | null>(null);
+  const [candidateAccessToken, setCandidateAccessToken] = useState<string | null>(null);
+  const [demoFallbackOtp, setDemoFallbackOtp] = useState<string | null>(null);
 
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const timer = setTimeout(() => setResendCooldown((prev) => Math.max(0, prev - 1)), 1000);
+    return () => clearTimeout(timer);
+  }, [resendCooldown]);
 
   const {
     register,
@@ -75,39 +85,65 @@ export default function CandidateUpdatePage() {
 
   const formValues = watch();
 
-  // Step 1: Send secure OTP / Magic Link
+  const populateCandidateForm = (record: Candidate) => {
+    reset({
+      availability_status: record.availability_status,
+      available_from: record.available_from,
+      overlap_hours_per_day: record.overlap_hours_per_day,
+      target_timezones: record.target_timezones,
+      home_timezone: record.home_timezone,
+      video_pitch_url: record.video_pitch_url || '',
+      written_pitch: record.written_pitch,
+      resume_url: record.resume_url || '',
+      resume_filename: record.resume_filename || '',
+    });
+  };
+
+  // Step 1: Look up candidate record & send Supabase Email OTP
   const handleRequestOtp = async (emailToLookup: string) => {
-    if (!emailToLookup.trim()) return;
+    const cleanEmail = emailToLookup.trim().toLowerCase();
+    if (!cleanEmail) return;
     setIsSearching(true);
     setSearchError(null);
     setOtpError(null);
+    setOtpNotice(null);
 
     try {
-      const { candidate: found } = await getCandidateByEmail(emailToLookup.trim());
-      if (found) {
-        setCandidate(found);
-        
-        // If Supabase is configured, trigger passwordless email OTP
-        const supabase = getSupabaseBrowserClient();
-        if (supabase && isSupabaseConfigured) {
-          try {
-            await supabase.auth.signInWithOtp({
-              email: found.email,
-              options: {
-                shouldCreateUser: false,
-              },
-            });
-          } catch (e) {
-            console.warn('Supabase OTP notice:', e);
-          }
-        }
-
-        const generatedCode = String(Math.floor(100000 + Math.random() * 900000));
-        setSimulatedOtp(generatedCode);
-        setOtpStep('enter_otp');
-      } else {
+      const { candidate: found } = await getCandidateByEmail(cleanEmail);
+      if (!found) {
         setCandidate(null);
         setSearchError('No registered candidate profile found with this email. Please apply as a new engineer.');
+        return;
+      }
+
+      setCandidate(found);
+
+      const supabase = getSupabaseBrowserClient();
+      if (supabase && isSupabaseConfigured) {
+        const { error } = await supabase.auth.signInWithOtp({
+          email: found.email,
+          options: {
+            shouldCreateUser: true,
+          },
+        });
+
+        if (error) {
+          setSearchError(error.message || 'Unable to send OTP email. Please check Supabase SMTP configuration and try again.');
+          return;
+        }
+
+        setDemoFallbackOtp(null);
+        setOtpCode('');
+        setResendCooldown(60);
+        setOtpNotice(`A 6-digit verification code has been sent to ${found.email}. Check your inbox and spam folder.`);
+        setOtpStep('enter_otp');
+      } else {
+        // Offline / local demo fallback when Supabase is not configured
+        const generatedCode = String(Math.floor(100000 + Math.random() * 900000));
+        setDemoFallbackOtp(generatedCode);
+        setOtpCode('');
+        setOtpNotice(`Offline demo mode (Supabase not configured). Use code: ${generatedCode}`);
+        setOtpStep('enter_otp');
       }
     } catch (err: any) {
       setSearchError(err.message || 'Error looking up profile.');
@@ -116,10 +152,46 @@ export default function CandidateUpdatePage() {
     }
   };
 
-  // Step 2: Verify OTP
+  // Resend OTP with rate-limit protection
+  const handleResendOtp = async () => {
+    if (!candidate || resendCooldown > 0 || isResendingOtp) return;
+    setIsResendingOtp(true);
+    setOtpError(null);
+
+    try {
+      const supabase = getSupabaseBrowserClient();
+      if (supabase && isSupabaseConfigured) {
+        const { error } = await supabase.auth.signInWithOtp({
+          email: candidate.email,
+          options: {
+            shouldCreateUser: true,
+          },
+        });
+
+        if (error) {
+          setOtpError(error.message || 'Failed to resend verification code.');
+          return;
+        }
+
+        setResendCooldown(60);
+        setOtpNotice(`A fresh verification code has been dispatched to ${candidate.email}.`);
+      } else {
+        const generatedCode = String(Math.floor(100000 + Math.random() * 900000));
+        setDemoFallbackOtp(generatedCode);
+        setOtpNotice(`Offline demo mode. New code: ${generatedCode}`);
+      }
+    } catch (err: any) {
+      setOtpError(err.message || 'Failed to resend verification code.');
+    } finally {
+      setIsResendingOtp(false);
+    }
+  };
+
+  // Step 2: Verify OTP via Supabase Auth
   const handleVerifyOtp = async () => {
-    if (!otpCode.trim() || !candidate) {
-      setOtpError('Please enter the 6-digit verification code.');
+    const cleanToken = otpCode.trim();
+    if (!cleanToken || !candidate) {
+      setOtpError('Please enter the verification code sent to your email.');
       return;
     }
 
@@ -127,47 +199,56 @@ export default function CandidateUpdatePage() {
     setOtpError(null);
 
     try {
-      // In production with Supabase:
       const supabase = getSupabaseBrowserClient();
       if (supabase && isSupabaseConfigured) {
-        try {
-          const { error } = await supabase.auth.verifyOtp({
-            email: candidate.email,
-            token: otpCode.trim(),
-            type: 'email',
-          });
-          if (error && otpCode.trim() !== simulatedOtp && otpCode.trim() !== '742918') {
-            setOtpError(error.message);
-            setIsVerifyingOtp(false);
-            return;
-          }
-        } catch {
-          // fallback to code check
+        const { data, error } = await supabase.auth.verifyOtp({
+          email: candidate.email,
+          token: cleanToken,
+          type: 'email',
+        });
+
+        if (error || !data?.session?.access_token) {
+          setOtpError(error?.message || 'Invalid or expired verification code. Please check the code or request a new one.');
+          return;
         }
+
+        const accessToken = data.session.access_token;
+        setCandidateAccessToken(accessToken);
+
+        // Fetch full unredacted own candidate record (phone & resume key) using verified session token
+        const { candidate: fullRecord } = await getCandidateByEmail(candidate.email, accessToken);
+        const resolved = fullRecord || candidate;
+        setCandidate(resolved);
+        populateCandidateForm(resolved);
+        setOtpStep('authenticated');
+        return;
       }
 
-      // Verify code strictly against simulated OTP or Supabase verified state
-      if (otpCode.trim() === simulatedOtp) {
+      // Offline / local demo fallback verification
+      if (demoFallbackOtp && cleanToken === demoFallbackOtp) {
+        populateCandidateForm(candidate);
         setOtpStep('authenticated');
-        reset({
-          availability_status: candidate.availability_status,
-          available_from: candidate.available_from,
-          overlap_hours_per_day: candidate.overlap_hours_per_day,
-          target_timezones: candidate.target_timezones,
-          home_timezone: candidate.home_timezone,
-          video_pitch_url: candidate.video_pitch_url || '',
-          written_pitch: candidate.written_pitch,
-          resume_url: candidate.resume_url || '',
-          resume_filename: candidate.resume_filename || '',
-        });
       } else {
-        setOtpError('Invalid verification code. Please check the 6-digit code sent to your email.');
+        setOtpError('Invalid verification code. Please enter the demo code shown above.');
       }
     } catch (err: any) {
       setOtpError(err.message || 'Verification failed.');
     } finally {
       setIsVerifyingOtp(false);
     }
+  };
+
+  const handleResetToEmailStep = async () => {
+    const supabase = getSupabaseBrowserClient();
+    if (supabase && isSupabaseConfigured) {
+      await supabase.auth.signOut().catch(() => {});
+    }
+    setCandidateAccessToken(null);
+    setOtpCode('');
+    setOtpError(null);
+    setOtpNotice(null);
+    setDemoFallbackOtp(null);
+    setOtpStep('input_email');
   };
 
   const handleResumeFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -204,7 +285,17 @@ export default function CandidateUpdatePage() {
     setSaveError(null);
 
     try {
-      const res = await updateCandidateAvailabilityRecord(candidate.email, data);
+      let tokenToUse = candidateAccessToken || undefined;
+      const supabase = getSupabaseBrowserClient();
+      if (supabase && isSupabaseConfigured) {
+        const { data: sessionData } = await supabase.auth.getSession();
+        if (sessionData?.session?.access_token) {
+          tokenToUse = sessionData.session.access_token;
+          setCandidateAccessToken(tokenToUse);
+        }
+      }
+
+      const res = await updateCandidateAvailabilityRecord(candidate.email, data, tokenToUse);
       if (res.success && res.candidate) {
         setCandidate(res.candidate);
         setNewResumeFileName(null);
@@ -307,15 +398,23 @@ export default function CandidateUpdatePage() {
             </div>
 
             <div className="p-3 border border-[#111113]/20 bg-[#F8F7F4] font-mono text-xs text-[#111113]/75">
-              Please enter the 6-digit code sent to your registered email to unlock and manage your availability.
+              {otpNotice || 'Please enter the one-time verification code sent to your registered email to unlock and manage your availability.'}
             </div>
 
             <div className="space-y-4">
               <input
                 type="text"
-                maxLength={6}
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                maxLength={8}
                 value={otpCode}
-                onChange={(e) => setOtpCode(e.target.value)}
+                onChange={(e) => setOtpCode(e.target.value.replace(/\s+/g, ''))}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleVerifyOtp();
+                  }
+                }}
                 placeholder="123456"
                 className="w-full text-center text-3xl font-mono tracking-widest py-3 border-2 border-[#111113] bg-[#F8F7F4] text-[#111113] focus:outline-hidden"
               />
@@ -330,10 +429,19 @@ export default function CandidateUpdatePage() {
               <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center gap-2 font-mono text-xs">
                 <button
                   type="button"
-                  onClick={() => setOtpStep('input_email')}
+                  onClick={handleResetToEmailStep}
                   className="btn-brutalist py-3 px-4 min-h-[44px] flex items-center justify-center"
                 >
                   Change Email
+                </button>
+                <button
+                  type="button"
+                  onClick={handleResendOtp}
+                  disabled={resendCooldown > 0 || isResendingOtp}
+                  className="btn-brutalist py-3 px-4 min-h-[44px] flex items-center justify-center gap-1.5 disabled:opacity-50"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isResendingOtp ? 'animate-spin' : ''}`} />
+                  <span>{resendCooldown > 0 ? `Resend (${resendCooldown}s)` : 'Resend Code'}</span>
                 </button>
                 <button
                   type="button"

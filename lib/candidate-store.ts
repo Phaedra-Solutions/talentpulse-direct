@@ -247,14 +247,23 @@ export async function getCandidatesList(filters?: Partial<CandidateFilters>): Pr
 /**
  * Fetch candidate by email (for self-service update portal)
  */
-export async function getCandidateByEmail(email: string): Promise<{
+export async function getCandidateByEmail(
+  email: string,
+  accessToken?: string
+): Promise<{
   candidate: Candidate | null;
   isLiveSupabase: boolean;
 }> {
   const normalizedEmail = email.trim().toLowerCase();
   
   try {
-    const res = await fetch(`/api/candidates?email=${encodeURIComponent(normalizedEmail)}`);
+    const headers: Record<string, string> = {};
+    if (accessToken) {
+      headers['Authorization'] = `Bearer ${accessToken}`;
+    }
+    const res = await fetch(`/api/candidates?email=${encodeURIComponent(normalizedEmail)}`, {
+      headers,
+    });
     if (res.ok) {
       const data = await res.json();
       if (Array.isArray(data.candidates) && data.candidates.length > 0) {
@@ -348,14 +357,19 @@ export async function createCandidateRecord(values: CandidateApplicationFormValu
  */
 export async function updateCandidateAvailabilityRecord(
   email: string,
-  updates: CandidateUpdateFormValues
+  updates: CandidateUpdateFormValues,
+  accessToken?: string
 ): Promise<{ success: boolean; candidate?: Candidate; error?: string; isLiveSupabase: boolean }> {
   const normalizedEmail = email.toLowerCase().trim();
 
   try {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (accessToken) {
+      headers['Authorization'] = `Bearer ${accessToken}`;
+    }
     const res = await fetch('/api/candidates', {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({ email: normalizedEmail, ...updates }),
     });
 
