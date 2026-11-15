@@ -123,6 +123,9 @@ CREATE INDEX IF NOT EXISTS idx_candidates_created_at ON public.candidates(create
 CREATE INDEX IF NOT EXISTS idx_candidates_consent_timestamp ON public.candidates(consent_timestamp);
 CREATE INDEX IF NOT EXISTS idx_candidates_tech_stack ON public.candidates USING GIN (tech_stack);
 CREATE INDEX IF NOT EXISTS idx_candidates_target_timezones ON public.candidates USING GIN (target_timezones);
+CREATE INDEX IF NOT EXISTS idx_candidates_has_resume ON public.candidates ((resume_url IS NOT NULL AND resume_url <> ''));
+CREATE INDEX IF NOT EXISTS idx_candidates_has_video_pitch ON public.candidates ((video_pitch_url IS NOT NULL AND video_pitch_url <> ''));
+CREATE INDEX IF NOT EXISTS idx_candidates_english_proficiency ON public.candidates(english_proficiency);
 
 -- 5. AUTOMATIC TIMESTAMP TRIGGER
 CREATE OR REPLACE FUNCTION public.handle_updated_at()
@@ -392,6 +395,8 @@ CREATE TABLE IF NOT EXISTS public.technologies (
 
 CREATE INDEX IF NOT EXISTS idx_technologies_slug ON public.technologies(slug);
 CREATE INDEX IF NOT EXISTS idx_technologies_status ON public.technologies(status);
+CREATE INDEX IF NOT EXISTS idx_technologies_status_created_at ON public.technologies(status, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_technologies_name ON public.technologies(name);
 
 CREATE TABLE IF NOT EXISTS public.role_technologies (
     role_id TEXT NOT NULL REFERENCES public.roles(id) ON DELETE CASCADE,
@@ -399,6 +404,8 @@ CREATE TABLE IF NOT EXISTS public.role_technologies (
     is_featured BOOLEAN NOT NULL DEFAULT false,
     PRIMARY KEY (role_id, technology_id)
 );
+
+CREATE INDEX IF NOT EXISTS idx_role_technologies_tech_id ON public.role_technologies(technology_id);
 
 ALTER TABLE public.roles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.technologies ENABLE ROW LEVEL SECURITY;

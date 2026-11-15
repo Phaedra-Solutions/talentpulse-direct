@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, Suspense } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { 
@@ -10,7 +10,9 @@ import {
   getPipelineStageMeta 
 } from '@/types/candidate';
 import { 
-  getCandidatesList, 
+  CandidateKpiStats,
+  getCandidateById,
+  getCandidatesPaginated, 
   updateCandidateStageAndNotesRecord 
 } from '@/lib/candidate-store';
 import * as XLSX from 'xlsx';
@@ -67,7 +69,19 @@ function AdminDashboardContent() {
   const router = useRouter();
   const hrUser = useCurrentHrUser();
   const isAuthorized = Boolean(hrUser && hrUser.email && canAccessCandidatePipeline(hrUser.role));
-  const [rawCandidates, setRawCandidates] = useState<Candidate[]>([]);
+  const [candidates, setCandidates] = useState<Candidate[]>([]);
+  const [totalCandidates, setTotalCandidates] = useState(0);
+  const [kpis, setKpis] = useState<CandidateKpiStats>({
+    total: 0,
+    availableNow: 0,
+    withVideo: 0,
+    withResume: 0,
+    aiEngineers: 0,
+    mobileAndArchs: 0,
+  });
+  const [stageCounts, setStageCounts] = useState<Record<string, number>>({});
+  const [fetchError, setFetchError] = useState<string | null>(null);
+  const [isExporting, setIsExporting] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isLiveSupabase, setIsLiveSupabase] = useState(false);
   const [viewMode, setViewMode] = useState<'table' | 'cards' | 'kanban'>('table');
@@ -130,6 +144,16 @@ function AdminDashboardContent() {
     updateHrUserSession({ role: newRole });
   };
 
+  const PAGE_SIZE = 20;
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(filters.searchQuery);
+    }, 280);
+    return () => clearTimeout(timer);
+  }, [filters.searchQuery]);
+
   // 1. Strict Auth Verification Gate: Redirect if unauthenticated or must change password
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -140,21 +164,48 @@ function AdminDashboardContent() {
     } else if (hrUser?.must_change_password) {
       router.replace(`/admin/change-password?email=${encodeURIComponent(hrUser.email)}&first_login=true`);
     }
-  }, [hrUser, router]);
+  }, [hrUser?.email, hrUser?.role, hrUser?.must_change_password, router]);
 
-  // 2. Fetch all candidates once upon authentication or manual refresh
-  const reloadCandidates = async () => {
+  // 2. Fetch paginated candidates + KPI counts from server
+  const reloadCandidates = async (overridePage?: number) => {
     if (!isAuthorized) return;
     setIsLoading(true);
+    setFetchError(null);
+    const targetPage = overridePage ?? currentPage;
     try {
-      const { candidates: data, isLiveSupabase: live } = await getCandidatesList();
-      setRawCandidates(data);
-      setIsLiveSupabase(live);
-      setSelectedCandidate((prev) => (prev ? data.find((c) => c.id === prev.id) || prev : null));
-    } catch (err) {
+      const effectiveFilters: CandidateFilters = {
+        ...filters,
+        searchQuery: debouncedSearch,
+      };
+      const result = await getCandidatesPaginated(effectiveFilters, {
+        page: targetPage,
+        limit: PAGE_SIZE,
+        includeStats: true,
+        view: viewMode,
+      });
+      if (result.error) {
+        setFetchError(result.error);
+      } else {
+        setCandidates(result.candidates);
+        setTotalCandidates(result.total);
+        setIsLiveSupabase(result.isLiveSupabase);
+        if (result.stats) setKpis(result.stats);
+        if (result.stageCounts) setStageCounts(result.stageCounts);
+      }
+    } catch (err: any) {
       console.error(err);
+      setFetchError(err?.message || 'Failed to load candidates');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleOpenCandidateDrawer = async (cand: Candidate) => {
+    setSelectedCandidate(cand);
+    setIsDrawerOpen(true);
+    const fullDossier = await getCandidateById(cand.id);
+    if (fullDossier) {
+      setSelectedCandidate((prev) => (prev && prev.id === fullDossier.id ? fullDossier : prev));
     }
   };
 
@@ -276,17 +327,50 @@ function AdminDashboardContent() {
     if (!isAuthorized) return;
     let isCancelled = false;
 
-    getCandidatesList()
-      .then(({ candidates: data, isLiveSupabase: live }) => {
-        if (!isCancelled) {
-          setRawCandidates(data);
-          setIsLiveSupabase(live);
-          setIsLoading(false);
-        }
+    const effectiveFilters: CandidateFilters = {
+      searchQuery: debouncedSearch,
+      primaryRole: filters.primaryRole,
+      targetRegion: filters.targetRegion,
+      availabilityStatus: filters.availabilityStatus,
+      pipelineStage: filters.pipelineStage,
+      hasVideoPitch: filters.hasVideoPitch,
+      hasResume: filters.hasResume,
+      englishProficiency: filters.englishProficiency,
+      sortBy: filters.sortBy,
+      sortOrder: filters.sortOrder,
+    };
+
+    Promise.resolve()
+      .then(() => {
+        if (isCancelled) return null;
+        setIsLoading(true);
+        setFetchError(null);
+        return getCandidatesPaginated(effectiveFilters, {
+          page: currentPage,
+          limit: PAGE_SIZE,
+          includeStats: true,
+          view: viewMode,
+        });
       })
-      .catch((err) => {
+      .then((result) => {
+        if (isCancelled || !result) return;
+        if (result.error) {
+          setFetchError(result.error);
+          setCandidates([]);
+          setTotalCandidates(0);
+        } else {
+          setCandidates(result.candidates);
+          setTotalCandidates(result.total);
+          setIsLiveSupabase(result.isLiveSupabase);
+          if (result.stats) setKpis(result.stats);
+          if (result.stageCounts) setStageCounts(result.stageCounts);
+        }
+        setIsLoading(false);
+      })
+      .catch((err: any) => {
         if (!isCancelled) {
           console.error(err);
+          setFetchError(err?.message || 'Failed to load candidates');
           setIsLoading(false);
         }
       });
@@ -294,99 +378,41 @@ function AdminDashboardContent() {
     return () => {
       isCancelled = true;
     };
-  }, [isAuthorized]);
+  }, [
+    isAuthorized,
+    currentPage,
+    viewMode,
+    debouncedSearch,
+    filters.primaryRole,
+    filters.targetRegion,
+    filters.availabilityStatus,
+    filters.pipelineStage,
+    filters.hasVideoPitch,
+    filters.hasResume,
+    filters.englishProficiency,
+    filters.sortBy,
+    filters.sortOrder,
+  ]);
 
-  // 3. Instantaneous in-memory filtering (0ms latency, no server thrashing on keystrokes)
-  const candidates = useMemo(() => {
-    let list = [...rawCandidates];
-
-    if (filters.searchQuery) {
-      const q = filters.searchQuery.toLowerCase().trim();
-      list = list.filter((c) =>
-        c.full_name?.toLowerCase().includes(q) ||
-        c.email?.toLowerCase().includes(q) ||
-        c.phone_number?.toLowerCase().includes(q) ||
-        c.written_pitch?.toLowerCase().includes(q) ||
-        c.tech_stack?.some((t) => t.toLowerCase().includes(q)) ||
-        c.internal_notes?.toLowerCase().includes(q)
-      );
+  // Reset pagination to page 1 whenever any filter changes
+  const filterKey = `${debouncedSearch}|${filters.primaryRole}|${filters.targetRegion}|${filters.availabilityStatus}|${filters.pipelineStage}|${filters.hasVideoPitch}|${filters.hasResume}|${filters.englishProficiency}|${filters.sortBy}|${filters.sortOrder}`;
+  const [prevFilterKey, setPrevFilterKey] = useState(filterKey);
+  if (prevFilterKey !== filterKey) {
+    setPrevFilterKey(filterKey);
+    if (currentPage !== 1) {
+      setCurrentPage(1);
     }
+  }
 
-    if (filters.primaryRole && filters.primaryRole !== 'all') {
-      list = list.filter((c) => c.primary_role === filters.primaryRole);
-    }
-
-    if (filters.targetRegion && filters.targetRegion !== 'all') {
-      list = list.filter((c) => c.target_timezones?.includes(filters.targetRegion as any));
-    }
-
-    if (filters.availabilityStatus && filters.availabilityStatus !== 'all') {
-      list = list.filter((c) => c.availability_status === filters.availabilityStatus);
-    }
-
-    if (filters.pipelineStage && filters.pipelineStage !== 'all') {
-      list = list.filter((c) => c.pipeline_stage === filters.pipelineStage);
-    }
-
-    if (filters.englishProficiency && filters.englishProficiency !== 'all') {
-      list = list.filter((c) => c.english_proficiency === filters.englishProficiency);
-    }
-
-    if (filters.hasVideoPitch === 'yes') {
-      list = list.filter((c) => Boolean(c.video_pitch_url && c.video_pitch_url.trim().length > 0));
-    } else if (filters.hasVideoPitch === 'no') {
-      list = list.filter((c) => !c.video_pitch_url || c.video_pitch_url.trim().length === 0);
-    }
-
-    if (filters.hasResume === 'yes') {
-      list = list.filter((c) => Boolean(c.resume_url && c.resume_url.trim().length > 0));
-    } else if (filters.hasResume === 'no') {
-      list = list.filter((c) => !c.resume_url || c.resume_url.trim().length === 0);
-    }
-
-    // Sort
-    const sortBy = filters.sortBy || 'created_at';
-    const isAsc = filters.sortOrder === 'asc';
-    list.sort((a, b) => {
-      let valA = (a as any)[sortBy];
-      let valB = (b as any)[sortBy];
-
-      if (sortBy === 'created_at') {
-        valA = new Date(valA || 0).getTime();
-        valB = new Date(valB || 0).getTime();
-      }
-
-      if (valA < valB) return isAsc ? -1 : 1;
-      if (valA > valB) return isAsc ? 1 : -1;
-      return 0;
-    });
-
-    return list;
-  }, [rawCandidates, filters]);
-
-  // Pagination parameters: 20 records per page for both Table and Card views
-  const PAGE_SIZE = 20;
-  const totalCandidates = candidates.length;
   const totalPages = Math.max(1, Math.ceil(totalCandidates / PAGE_SIZE));
   const safeCurrentPage = Math.min(currentPage, totalPages);
   const startIndex = (safeCurrentPage - 1) * PAGE_SIZE;
-
-  // Reset pagination to page 1 whenever any filter changes (render-time adjustment)
-  const [prevFilters, setPrevFilters] = useState(filters);
-  if (prevFilters !== filters) {
-    setPrevFilters(filters);
-    setCurrentPage(1);
-  }
-
-  const paginatedCandidates = useMemo(() => {
-    return candidates.slice(startIndex, startIndex + PAGE_SIZE);
-  }, [candidates, startIndex]);
 
   const renderPagination = () => {
     if (totalCandidates === 0) return null;
 
     const startRecord = startIndex + 1;
-    const endRecord = Math.min(startIndex + PAGE_SIZE, totalCandidates);
+    const endRecord = Math.min(startIndex + candidates.length, totalCandidates);
 
     // Build page numbers array with intelligent ellipsis
     const pageItems: (number | string)[] = [];
@@ -467,26 +493,26 @@ function AdminDashboardContent() {
     );
   };
 
-  // KPI Analytics Header Calculations (from raw pool)
-  const kpis = useMemo(() => {
-    const total = rawCandidates.length;
-    const availableNow = rawCandidates.filter((c) => c.availability_status === 'available_now').length;
-    const withVideo = rawCandidates.filter((c) => Boolean(c.video_pitch_url && c.video_pitch_url.trim().length > 0)).length;
-    const withResume = rawCandidates.filter((c) => Boolean(c.resume_url && c.resume_url.trim().length > 0)).length;
-    const aiEngineers = rawCandidates.filter((c) => c.primary_role === 'ai_engineer').length;
-    const mobileAndArchs = rawCandidates.filter((c) => c.primary_role === 'mobile_app_developer' || c.primary_role === 'solutions_architect').length;
-
-    return { total, availableNow, withVideo, withResume, aiEngineers, mobileAndArchs };
-  }, [rawCandidates]);
-
   // Stage change handler
   const handleStageChange = async (id: string, stage: PipelineStage, notes: string) => {
+    const existing = candidates.find((c) => c.id === id);
+    const previousStage = existing?.pipeline_stage;
     await updateCandidateStageAndNotesRecord(id, stage, notes);
-    setRawCandidates((prev) =>
+    setCandidates((prev) =>
       prev.map((c) => (c.id === id ? { ...c, pipeline_stage: stage, internal_notes: notes, updated_at: new Date().toISOString() } : c))
     );
+    if (previousStage && previousStage !== stage) {
+      setStageCounts((prev) => {
+        if (!Object.keys(prev).length) return prev;
+        return {
+          ...prev,
+          [previousStage]: Math.max(0, (prev[previousStage] ?? 1) - 1),
+          [stage]: (prev[stage] ?? 0) + 1,
+        };
+      });
+    }
     if (selectedCandidate && selectedCandidate.id === id) {
-      setSelectedCandidate((prev) => prev ? { ...prev, pipeline_stage: stage, internal_notes: notes } : null);
+      setSelectedCandidate((prev) => (prev ? { ...prev, pipeline_stage: stage, internal_notes: notes } : null));
     }
   };
 
@@ -505,92 +531,120 @@ function AdminDashboardContent() {
     router.push('/admin/login');
   };
 
-  // Bulk Candidate Export: Native XLSX Excel Spreadsheet
-  const handleExportXLSX = () => {
+  // Bulk Candidate Export: Native XLSX Excel Spreadsheet (fetches all matching rows on-demand without resume blobs)
+  const handleExportXLSX = async () => {
     if (!canExportCandidateData(hrUser?.role)) {
-      alert('Permission Restricted: Sales Executives are not authorized to download or export candidate data.');
+      setFetchError('Permission Restricted: Sales Executives are not authorized to download or export candidate data.');
       return;
     }
 
-    const dataToExport = candidates.map((c) => ({
-      'Candidate ID': c.id,
-      'Full Name': c.full_name,
-      'Email Address': c.email,
-      'Phone Number': c.phone_number || 'N/A',
-      'Primary Track / Role': c.primary_role,
-      'Pipeline Stage': c.pipeline_stage,
-      'Availability Status': c.availability_status,
-      'English Proficiency': c.english_proficiency,
-      'US Overlap Hours': c.overlap_hours_per_day,
-      'Available From': c.available_from || 'Immediate',
-      'Home Timezone': c.home_timezone || 'N/A',
-      'Target Timezones': Array.isArray(c.target_timezones) ? c.target_timezones.join(', ') : '',
-      'Technical Stack': Array.isArray(c.tech_stack) ? c.tech_stack.join(', ') : '',
-      'Written Pitch': c.written_pitch || '',
-      'Resume Filename': c.resume_filename || '',
-      'Video Pitch URL': c.video_pitch_url || '',
-      'Internal Recruiter Notes': c.internal_notes || '',
-      'Applied Date': c.created_at ? new Date(c.created_at).toISOString().split('T')[0] : '',
-      'Last Updated': c.updated_at ? new Date(c.updated_at).toISOString().split('T')[0] : '',
-    }));
+    setIsExporting(true);
+    try {
+      const exportResult = await getCandidatesPaginated(
+        { ...filters, searchQuery: debouncedSearch },
+        { isExport: true }
+      );
+      if (exportResult.error) {
+        setFetchError(exportResult.error);
+        return;
+      }
 
-    const worksheet = XLSX.utils.json_to_sheet(dataToExport);
+      const dataToExport = exportResult.candidates.map((c) => ({
+        'Candidate ID': c.id,
+        'Full Name': c.full_name,
+        'Email Address': c.email,
+        'Phone Number': c.phone_number || 'N/A',
+        'Primary Track / Role': c.primary_role,
+        'Pipeline Stage': c.pipeline_stage,
+        'Availability Status': c.availability_status,
+        'English Proficiency': c.english_proficiency,
+        'US Overlap Hours': c.overlap_hours_per_day,
+        'Available From': c.available_from || 'Immediate',
+        'Home Timezone': c.home_timezone || 'N/A',
+        'Target Timezones': Array.isArray(c.target_timezones) ? c.target_timezones.join(', ') : '',
+        'Technical Stack': Array.isArray(c.tech_stack) ? c.tech_stack.join(', ') : '',
+        'Written Pitch': c.written_pitch || '',
+        'Resume Filename': c.resume_filename || '',
+        'Video Pitch URL': c.video_pitch_url || '',
+        'Internal Recruiter Notes': c.internal_notes || '',
+        'Applied Date': c.created_at ? new Date(c.created_at).toISOString().split('T')[0] : '',
+        'Last Updated': c.updated_at ? new Date(c.updated_at).toISOString().split('T')[0] : '',
+      }));
 
-    // Auto-size columns for high readability
-    worksheet['!cols'] = [
-      { wch: 16 }, // ID
-      { wch: 24 }, // Full Name
-      { wch: 28 }, // Email
-      { wch: 18 }, // Phone
-      { wch: 25 }, // Role
-      { wch: 16 }, // Stage
-      { wch: 18 }, // Availability
-      { wch: 18 }, // English
-      { wch: 16 }, // Overlap
-      { wch: 14 }, // Exp
-      { wch: 24 }, // Timezones
-      { wch: 35 }, // Tech Stack
-      { wch: 40 }, // Pitch
-      { wch: 25 }, // Resume
-      { wch: 30 }, // Video
-      { wch: 35 }, // Notes
-      { wch: 15 }, // Applied Date
-      { wch: 15 }, // Last Updated
-    ];
+      const worksheet = XLSX.utils.json_to_sheet(dataToExport);
 
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'Candidates Pipeline');
-    const dateStr = new Date().toISOString().split('T')[0];
-    XLSX.writeFile(workbook, `talentpulse_candidates_${dateStr}.xlsx`);
+      // Auto-size columns for high readability
+      worksheet['!cols'] = [
+        { wch: 16 }, // ID
+        { wch: 24 }, // Full Name
+        { wch: 28 }, // Email
+        { wch: 18 }, // Phone
+        { wch: 25 }, // Role
+        { wch: 16 }, // Stage
+        { wch: 18 }, // Availability
+        { wch: 18 }, // English
+        { wch: 16 }, // Overlap
+        { wch: 14 }, // Exp
+        { wch: 24 }, // Timezones
+        { wch: 35 }, // Tech Stack
+        { wch: 40 }, // Pitch
+        { wch: 25 }, // Resume
+        { wch: 30 }, // Video
+        { wch: 35 }, // Notes
+        { wch: 15 }, // Applied Date
+        { wch: 15 }, // Last Updated
+      ];
+
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'Candidates Pipeline');
+      const dateStr = new Date().toISOString().split('T')[0];
+      XLSX.writeFile(workbook, `talentpulse_candidates_${dateStr}.xlsx`);
+    } finally {
+      setIsExporting(false);
+    }
   };
 
-  // Export CSV (Fallback / Alternative for Admins)
-  const handleExportCSV = () => {
+  // Export CSV (On-demand full export without base64 blobs)
+  const handleExportCSV = async () => {
     if (!canExportCandidateData(hrUser?.role)) {
-      alert('Permission Restricted: Sales Executives are not authorized to download or export candidate data.');
+      setFetchError('Permission Restricted: Sales Executives are not authorized to download or export candidate data.');
       return;
     }
 
-    const headers = ['Full Name', 'Email', 'Phone', 'Role', 'Status', 'Overlap Hours', 'Stage', 'Resume File', 'Video Pitch URL'];
-    const rows = candidates.map(c => [
-      `"${c.full_name}"`,
-      `"${c.email}"`,
-      `"${c.phone_number || ''}"`,
-      `"${c.primary_role}"`,
-      `"${c.availability_status}"`,
-      c.overlap_hours_per_day,
-      `"${c.pipeline_stage}"`,
-      `"${c.resume_filename || ''}"`,
-      `"${c.video_pitch_url || ''}"`
-    ]);
-    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `talentpulse_candidates_${new Date().toISOString().split('T')[0]}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    setIsExporting(true);
+    try {
+      const exportResult = await getCandidatesPaginated(
+        { ...filters, searchQuery: debouncedSearch },
+        { isExport: true }
+      );
+      if (exportResult.error) {
+        setFetchError(exportResult.error);
+        return;
+      }
+
+      const headers = ['Full Name', 'Email', 'Phone', 'Role', 'Status', 'Overlap Hours', 'Stage', 'Resume File', 'Video Pitch URL'];
+      const rows = exportResult.candidates.map((c) => [
+        `"${(c.full_name || '').replace(/"/g, '""')}"`,
+        `"${(c.email || '').replace(/"/g, '""')}"`,
+        `"${(c.phone_number || '').replace(/"/g, '""')}"`,
+        `"${(c.primary_role || '').replace(/"/g, '""')}"`,
+        `"${(c.availability_status || '').replace(/"/g, '""')}"`,
+        c.overlap_hours_per_day,
+        `"${(c.pipeline_stage || '').replace(/"/g, '""')}"`,
+        `"${(c.resume_filename || '').replace(/"/g, '""')}"`,
+        `"${(c.video_pitch_url || '').replace(/"/g, '""')}"`,
+      ]);
+      const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
+      const encodedUri = encodeURI(csvContent);
+      const link = document.createElement('a');
+      link.setAttribute('href', encodedUri);
+      link.setAttribute('download', `talentpulse_candidates_${new Date().toISOString().split('T')[0]}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   const kanbanStages: PipelineStage[] = ['new', 'vetted', 'interviewing', 'assigned', 'on_hold'];
@@ -785,16 +839,18 @@ function AdminDashboardContent() {
               <>
                 <button
                   onClick={handleExportXLSX}
-                  className="btn-brutalist text-xs py-2 sm:py-1.5 px-3 bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border-emerald-900 font-bold flex items-center gap-1.5 shrink-0 min-h-[44px] sm:min-h-0"
+                  disabled={isExporting}
+                  className="btn-brutalist text-xs py-2 sm:py-1.5 px-3 bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border-emerald-900 font-bold flex items-center gap-1.5 shrink-0 min-h-[44px] sm:min-h-0 disabled:opacity-50"
                   title="Download candidate pipeline in native Excel format (.xlsx)"
                 >
                   <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
-                  <span>Export Excel</span>
+                  <span>{isExporting ? 'Exporting...' : 'Export Excel'}</span>
                 </button>
 
                 <button
                   onClick={handleExportCSV}
-                  className="btn-brutalist text-xs py-2 sm:py-1.5 px-2.5 shrink-0 min-h-[44px] sm:min-h-0"
+                  disabled={isExporting}
+                  className="btn-brutalist text-xs py-2 sm:py-1.5 px-2.5 shrink-0 min-h-[44px] sm:min-h-0 disabled:opacity-50"
                   title="Download CSV file"
                 >
                   <Download className="w-3 h-3 shrink-0" />
@@ -1034,94 +1090,116 @@ function AdminDashboardContent() {
           </div>
         </div>
 
-        {/* Content Area: Table View, Cards View, or Kanban View */}
-        {viewMode === 'table' && (
-          <div className="space-y-4">
-            <CandidateTable
-              candidates={paginatedCandidates}
-              onSelectCandidate={(c) => {
-                setSelectedCandidate(c);
-                setIsDrawerOpen(true);
-              }}
-              onQuickStageChange={handleStageChange}
-              sortBy={filters.sortBy}
-              sortOrder={filters.sortOrder}
-              onSortChange={handleSortChange}
-            />
-            {renderPagination()}
+        {/* Database / API Error Banner (Never silently masked by mock data) */}
+        {fetchError && (
+          <div className="p-4 border-2 border-[#111113] bg-rose-50 text-rose-950 font-mono text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-[4px_4px_0px_0px_#111113]">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+              <div>
+                <span className="font-bold uppercase tracking-wider block text-rose-700">Pipeline Query Error</span>
+                <span>{fetchError}</span>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => reloadCandidates()}
+              className="btn-brutalist text-xs py-1.5 px-3 bg-white flex items-center gap-1.5 shrink-0"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              <span>Retry</span>
+            </button>
           </div>
         )}
 
-        {viewMode === 'cards' && (
-          <div className="space-y-4">
-            {paginatedCandidates.length === 0 ? (
-              <div className="p-12 text-center font-mono text-xs text-[#111113]/60 uppercase border-2 border-[#111113] bg-white shadow-[4px_4px_0px_0px_#111113]">
-                [No candidates matched current search and filter parameters]
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                {paginatedCandidates.map((c) => (
-                  <CandidateCard
-                    key={c.id}
-                    candidate={c}
-                    onSelect={(cand) => {
-                      setSelectedCandidate(cand);
-                      setIsDrawerOpen(true);
-                    }}
-                  />
-                ))}
+        {/* Content Area: Table View, Cards View, or Kanban View */}
+        {isLoading && candidates.length === 0 ? (
+          <div className="p-12 bg-white border-2 border-[#111113] shadow-[4px_4px_0px_0px_#111113] flex flex-col items-center justify-center gap-3 font-mono text-xs">
+            <div className="w-8 h-8 border-4 border-[#111113] border-t-[#FF4D00] animate-spin" />
+            <span className="uppercase tracking-wider text-[#111113]/70">Loading candidate pipeline...</span>
+          </div>
+        ) : (
+          <>
+            {viewMode === 'table' && (
+              <div className="space-y-4">
+                <CandidateTable
+                  candidates={candidates}
+                  onSelectCandidate={handleOpenCandidateDrawer}
+                  onQuickStageChange={handleStageChange}
+                  sortBy={filters.sortBy}
+                  sortOrder={filters.sortOrder}
+                  onSortChange={handleSortChange}
+                />
+                {renderPagination()}
               </div>
             )}
-            {renderPagination()}
-          </div>
-        )}
 
-        {viewMode === 'kanban' && (
-          /* Kanban Board */
-          <div className="grid grid-cols-1 md:grid-cols-5 gap-4 overflow-x-auto pb-4">
-            {kanbanStages.map((stage) => {
-              const stageMeta = getPipelineStageMeta(stage);
-              const stageCandidates = candidates.filter((c) => c.pipeline_stage === stage);
-
-              return (
-                <div 
-                  key={stage}
-                  className="bg-white border-2 border-[#111113] p-4 flex flex-col min-w-[260px] shadow-[4px_4px_0px_0px_#111113]"
-                >
-                  {/* Column Header */}
-                  <div className="flex items-center justify-between pb-3 mb-3 border-b-2 border-[#111113] font-mono text-xs">
-                    <span className="font-bold uppercase tracking-wider text-[#111113]">
-                      [{stageMeta.label}]
-                    </span>
-                    <span className="font-bold text-[#FF4D00]">
-                      {stageCandidates.length}
-                    </span>
+            {viewMode === 'cards' && (
+              <div className="space-y-4">
+                {candidates.length === 0 ? (
+                  <div className="p-12 text-center font-mono text-xs text-[#111113]/60 uppercase border-2 border-[#111113] bg-white shadow-[4px_4px_0px_0px_#111113]">
+                    [No candidates matched current search and filter parameters]
                   </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                    {candidates.map((c) => (
+                      <CandidateCard
+                        key={c.id}
+                        candidate={c}
+                        onSelect={handleOpenCandidateDrawer}
+                      />
+                    ))}
+                  </div>
+                )}
+                {renderPagination()}
+              </div>
+            )}
 
-                  {/* Cards in Column */}
-                  <div className="space-y-3 flex-1 overflow-y-auto max-h-[700px]">
-                    {stageCandidates.length === 0 ? (
-                      <div className="py-8 text-center font-mono text-xs text-[#111113]/50 border-2 border-dashed border-[#111113]/30 uppercase">
-                        [No candidates in stage]
+            {viewMode === 'kanban' && (
+              /* Kanban Board */
+              <div className="grid grid-cols-1 md:grid-cols-5 gap-4 overflow-x-auto pb-4">
+                {kanbanStages.map((stage) => {
+                  const stageMeta = getPipelineStageMeta(stage);
+                  const stageCandidates = candidates.filter((c) => c.pipeline_stage === stage);
+                  const totalInStage = stageCounts[stage] ?? stageCandidates.length;
+
+                  return (
+                    <div 
+                      key={stage}
+                      className="bg-white border-2 border-[#111113] p-4 flex flex-col min-w-[260px] shadow-[4px_4px_0px_0px_#111113]"
+                    >
+                      {/* Column Header */}
+                      <div className="flex items-center justify-between pb-3 mb-3 border-b-2 border-[#111113] font-mono text-xs">
+                        <span className="font-bold uppercase tracking-wider text-[#111113]">
+                          [{stageMeta.label}]
+                        </span>
+                        <span className="font-bold text-[#FF4D00]" title={totalInStage > stageCandidates.length ? `Showing latest ${stageCandidates.length} of ${totalInStage}` : undefined}>
+                          {totalInStage}
+                        </span>
                       </div>
-                    ) : (
-                      stageCandidates.map((c) => (
-                        <CandidateCard
-                          key={c.id}
-                          candidate={c}
-                          compact
-                          onSelect={(cand) => {
-                            setSelectedCandidate(cand);
-                            setIsDrawerOpen(true);
-                          }}
-                        />
-                      ))
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+
+                      {/* Cards in Column */}
+                      <div className="space-y-3 flex-1 overflow-y-auto max-h-[700px]">
+                        {stageCandidates.length === 0 ? (
+                          <div className="py-8 text-center font-mono text-xs text-[#111113]/50 border-2 border-dashed border-[#111113]/30 uppercase">
+                            [No candidates in stage]
+                          </div>
+                        ) : (
+                          stageCandidates.map((c) => (
+                            <CandidateCard
+                              key={c.id}
+                              candidate={c}
+                              compact
+                              onSelect={handleOpenCandidateDrawer}
+                            />
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </>
         )}
       </main>
 

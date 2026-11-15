@@ -88,160 +88,161 @@ function saveLocalCandidates(candidates: Candidate[]): void {
   }
 }
 
-/**
- * Fetch candidates with optional filters
- */
-export async function getCandidatesList(filters?: Partial<CandidateFilters>): Promise<{
-  candidates: Candidate[];
-  isLiveSupabase: boolean;
-}> {
-  try {
-    const params = new URLSearchParams();
-    if (filters?.primaryRole && filters.primaryRole !== 'all') params.set('primaryRole', filters.primaryRole);
-    if (filters?.availabilityStatus && filters.availabilityStatus !== 'all') params.set('availabilityStatus', filters.availabilityStatus);
-    if (filters?.pipelineStage && filters.pipelineStage !== 'all') params.set('pipelineStage', filters.pipelineStage);
-    params.set('summary', 'true');
+export interface CandidateKpiStats {
+  total: number;
+  availableNow: number;
+  withVideo: number;
+  withResume: number;
+  aiEngineers: number;
+  mobileAndArchs: number;
+}
 
-    const queryStr = params.toString() ? `?${params.toString()}` : '';
-    let authHeaders = {};
+export interface PaginatedCandidatesResult {
+  candidates: Candidate[];
+  total: number;
+  page: number;
+  limit: number;
+  stats?: CandidateKpiStats;
+  stageCounts?: Record<string, number>;
+  isLiveSupabase: boolean;
+  source: string;
+  error?: string;
+}
+
+function buildCandidateQueryParams(
+  filters?: Partial<CandidateFilters>,
+  options?: {
+    page?: number;
+    limit?: number;
+    includeStats?: boolean;
+    view?: 'table' | 'cards' | 'kanban';
+    isExport?: boolean;
+  }
+): URLSearchParams {
+  const params = new URLSearchParams();
+  if (filters?.primaryRole && filters.primaryRole !== 'all') params.set('primaryRole', filters.primaryRole);
+  if (filters?.targetRegion && filters.targetRegion !== 'all') params.set('targetRegion', filters.targetRegion);
+  if (filters?.availabilityStatus && filters.availabilityStatus !== 'all') params.set('availabilityStatus', filters.availabilityStatus);
+  if (filters?.pipelineStage && filters.pipelineStage !== 'all') params.set('pipelineStage', filters.pipelineStage);
+  if (filters?.englishProficiency && filters.englishProficiency !== 'all') params.set('englishProficiency', filters.englishProficiency);
+  if (filters?.hasVideoPitch && filters.hasVideoPitch !== 'all') params.set('hasVideoPitch', filters.hasVideoPitch);
+  if (filters?.hasResume && filters.hasResume !== 'all') params.set('hasResume', filters.hasResume);
+  if (filters?.searchQuery && filters.searchQuery.trim()) params.set('search', filters.searchQuery.trim());
+  if (filters?.sortBy) params.set('sortBy', filters.sortBy);
+  if (filters?.sortOrder) params.set('sortOrder', filters.sortOrder);
+
+  if (options?.page) params.set('page', String(options.page));
+  if (options?.limit) params.set('limit', String(options.limit));
+  if (options?.includeStats) params.set('includeStats', 'true');
+  if (options?.view) params.set('view', options.view);
+  if (options?.isExport) params.set('export', 'true');
+  return params;
+}
+
+/**
+ * Fetch candidates with server-side filtering, pagination, and optional KPI stats.
+ * Never falls back to 6 mock candidates when the backend reports an auth/database error.
+ */
+export async function getCandidatesPaginated(
+  filters?: Partial<CandidateFilters>,
+  options?: {
+    page?: number;
+    limit?: number;
+    includeStats?: boolean;
+    view?: 'table' | 'cards' | 'kanban';
+    isExport?: boolean;
+  }
+): Promise<PaginatedCandidatesResult> {
+  const page = options?.page || 1;
+  const limit = options?.limit || 20;
+  const params = buildCandidateQueryParams(filters, { ...options, page, limit });
+
+  let authHeaders: Record<string, string> = {};
+  if (typeof window !== 'undefined') {
+    const { getAdminAuthHeaders } = await import('./auth/recruiter-auth');
+    authHeaders = getAdminAuthHeaders();
+  }
+
+  const res = await fetch(`/api/candidates?${params.toString()}`, {
+    headers: { ...authHeaders },
+  });
+
+  const data = await res.json().catch(() => ({}));
+
+  if (!res.ok) {
+    return {
+      candidates: [],
+      total: 0,
+      page,
+      limit,
+      isLiveSupabase: false,
+      source: data.source || 'error',
+      error: data.error || `Failed to load candidates (HTTP ${res.status})`,
+    };
+  }
+
+  const items: Candidate[] = Array.isArray(data.candidates)
+    ? data.candidates.map(sanitizeCandidate)
+    : [];
+
+  return {
+    candidates: items,
+    total: typeof data.total === 'number' ? data.total : items.length,
+    page: typeof data.page === 'number' ? data.page : page,
+    limit: typeof data.limit === 'number' ? data.limit : limit,
+    stats: data.stats,
+    stageCounts: data.stageCounts,
+    isLiveSupabase: data.source === 'supabase',
+    source: data.source || 'supabase',
+  };
+}
+
+/**
+ * Fetch full single-candidate dossier by ID (used when opening detail drawer)
+ */
+export async function getCandidateById(id: string): Promise<Candidate | null> {
+  try {
+    let authHeaders: Record<string, string> = {};
     if (typeof window !== 'undefined') {
       const { getAdminAuthHeaders } = await import('./auth/recruiter-auth');
       authHeaders = getAdminAuthHeaders();
     }
-    const res = await fetch(`/api/candidates${queryStr}`, {
-      headers: { ...authHeaders }
+    const res = await fetch(`/api/candidates/${encodeURIComponent(id)}`, {
+      headers: { ...authHeaders },
     });
-    if (res.ok) {
-      const data = await res.json();
-      if (Array.isArray(data.candidates)) {
-        let items: Candidate[] = data.candidates;
-        
-        // Client-side quick filter/search refinement if needed
-        if (filters?.searchQuery) {
-          const q = filters.searchQuery.toLowerCase().trim();
-          items = items.filter(c => 
-            c.full_name?.toLowerCase().includes(q) ||
-            c.email?.toLowerCase().includes(q) ||
-            c.written_pitch?.toLowerCase().includes(q) ||
-            c.tech_stack?.some((t: string) => t.toLowerCase().includes(q)) ||
-            c.internal_notes?.toLowerCase().includes(q)
-          );
-        }
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.candidate ? sanitizeCandidate(data.candidate) : null;
+  } catch {
+    return null;
+  }
+}
 
-        if (filters?.targetRegion && filters.targetRegion !== 'all') {
-          items = items.filter(c => c.target_timezones?.includes(filters.targetRegion as any));
-        }
-
-        if (filters?.hasVideoPitch === 'yes') {
-          items = items.filter(c => Boolean(c.video_pitch_url && c.video_pitch_url.trim().length > 0));
-        } else if (filters?.hasVideoPitch === 'no') {
-          items = items.filter(c => !c.video_pitch_url || c.video_pitch_url.trim().length === 0);
-        }
-
-        if (filters?.hasResume === 'yes') {
-          items = items.filter(c => Boolean(c.resume_url && c.resume_url.trim().length > 0));
-        } else if (filters?.hasResume === 'no') {
-          items = items.filter(c => !c.resume_url || c.resume_url.trim().length === 0);
-        }
-
-        const sortBy = filters?.sortBy || 'created_at';
-        const isAsc = filters?.sortOrder === 'asc';
-        items.sort((a, b) => {
-          let valA = (a as any)[sortBy];
-          let valB = (b as any)[sortBy];
-          if (sortBy === 'created_at') {
-            valA = new Date(valA).getTime();
-            valB = new Date(valB).getTime();
-          }
-          if (valA < valB) return isAsc ? -1 : 1;
-          if (valA > valB) return isAsc ? 1 : -1;
-          return 0;
-        });
-
-        const isLive = data.source === 'supabase';
-        const isUnfiltered = !filters || (
-          (!filters.primaryRole || filters.primaryRole === 'all') &&
-          (!filters.availabilityStatus || filters.availabilityStatus === 'all') &&
-          (!filters.pipelineStage || filters.pipelineStage === 'all') &&
-          !filters.searchQuery &&
-          (!filters.targetRegion || filters.targetRegion === 'all') &&
-          (!filters.hasVideoPitch || filters.hasVideoPitch === 'all') &&
-          (!filters.hasResume || filters.hasResume === 'all')
-        );
-        if (isLive && isUnfiltered) {
-          saveLocalCandidates(items);
-        }
-        return { candidates: items, isLiveSupabase: isLive };
-      }
+/**
+ * Fetch candidates with optional filters (legacy/compat wrapper)
+ */
+export async function getCandidatesList(filters?: Partial<CandidateFilters>): Promise<{
+  candidates: Candidate[];
+  isLiveSupabase: boolean;
+  error?: string;
+}> {
+  try {
+    const result = await getCandidatesPaginated(filters, {
+      page: 1,
+      limit: 100,
+    });
+    if (!result.error) {
+      return { candidates: result.candidates, isLiveSupabase: result.isLiveSupabase };
     }
-  } catch (err) {
-    console.warn('API fetch candidates failed, falling back to local storage:', err);
+    return { candidates: [], isLiveSupabase: false, error: result.error };
+  } catch (err: any) {
+    console.warn('API fetch candidates failed:', err);
+    return {
+      candidates: [],
+      isLiveSupabase: false,
+      error: err?.message || 'Network error fetching candidates',
+    };
   }
-
-  // Fallback to local storage
-  let items = getLocalCandidates();
-
-  if (filters?.searchQuery) {
-    const q = filters.searchQuery.toLowerCase().trim();
-    items = items.filter(c => 
-      c.full_name.toLowerCase().includes(q) ||
-      c.email.toLowerCase().includes(q) ||
-      c.written_pitch.toLowerCase().includes(q) ||
-      c.tech_stack.some(t => t.toLowerCase().includes(q)) ||
-      c.internal_notes.toLowerCase().includes(q)
-    );
-  }
-
-  if (filters?.primaryRole && filters.primaryRole !== 'all') {
-    items = items.filter(c => c.primary_role === filters.primaryRole);
-  }
-
-  if (filters?.targetRegion && filters.targetRegion !== 'all') {
-    items = items.filter(c => c.target_timezones.includes(filters.targetRegion as any));
-  }
-
-  if (filters?.availabilityStatus && filters.availabilityStatus !== 'all') {
-    items = items.filter(c => c.availability_status === filters.availabilityStatus);
-  }
-
-  if (filters?.pipelineStage && filters.pipelineStage !== 'all') {
-    items = items.filter(c => c.pipeline_stage === filters.pipelineStage);
-  }
-
-  if (filters?.englishProficiency && filters.englishProficiency !== 'all') {
-    items = items.filter(c => c.english_proficiency === filters.englishProficiency);
-  }
-
-  if (filters?.hasVideoPitch === 'yes') {
-    items = items.filter(c => Boolean(c.video_pitch_url && c.video_pitch_url.trim().length > 0));
-  } else if (filters?.hasVideoPitch === 'no') {
-    items = items.filter(c => !c.video_pitch_url || c.video_pitch_url.trim().length === 0);
-  }
-
-  if (filters?.hasResume === 'yes') {
-    items = items.filter(c => Boolean(c.resume_url && c.resume_url.trim().length > 0));
-  } else if (filters?.hasResume === 'no') {
-    items = items.filter(c => !c.resume_url || c.resume_url.trim().length === 0);
-  }
-
-  // Sorting
-  const sortBy = filters?.sortBy || 'created_at';
-  const isAsc = filters?.sortOrder === 'asc';
-  items.sort((a, b) => {
-    let valA = (a as any)[sortBy];
-    let valB = (b as any)[sortBy];
-
-    if (sortBy === 'created_at') {
-      valA = new Date(valA).getTime();
-      valB = new Date(valB).getTime();
-    }
-
-    if (valA < valB) return isAsc ? -1 : 1;
-    if (valA > valB) return isAsc ? 1 : -1;
-    return 0;
-  });
-
-  return { candidates: items, isLiveSupabase: false };
 }
 
 /**
