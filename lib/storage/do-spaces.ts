@@ -948,7 +948,15 @@ export async function uploadResumeToSpaces(params: UploadResumeParams): Promise<
  * Returns false if credentials are not configured or deletion fails.
  */
 export async function deleteResumeFromSpaces(storageKey: string): Promise<boolean> {
-  if (!storageKey) return false;
+  if (
+    !storageKey ||
+    storageKey.startsWith('data:') ||
+    storageKey.startsWith('http://') ||
+    storageKey.startsWith('https://') ||
+    storageKey.startsWith('attached://')
+  ) {
+    return false;
+  }
 
   try {
     const cfg = assertDoSpacesConfigured();

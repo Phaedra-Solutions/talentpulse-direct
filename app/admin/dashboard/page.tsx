@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, Suspense } from 'react';
+import React, { useState, useEffect, useRef, Suspense } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { 
@@ -94,6 +94,13 @@ function AdminDashboardContent() {
   const [isMigratingResumes, setIsMigratingResumes] = useState(false);
   const [migrationResult, setMigrationResult] = useState<any>(null);
   const [migrationError, setMigrationError] = useState<string | null>(null);
+  const [migrationQueue, setMigrationQueue] = useState<{
+    totalCandidates: number;
+    alreadyInSpacesCount: number;
+    pendingMigrationCount: number;
+    noResumeCount: number;
+  } | null>(null);
+  const migrationAbortRef = useRef(false);
 
   const [storageConfig, setStorageConfig] = useState({
     endpoint: 'https://nyc3.digitaloceanspaces.com',
@@ -210,38 +217,120 @@ function AdminDashboardContent() {
   };
 
   const handleRunMigration = async () => {
+    migrationAbortRef.current = false;
     setIsMigratingResumes(true);
     setMigrationError(null);
-    setMigrationResult(null);
+
+    let cursorId: string | undefined = undefined;
+    let totalProcessedRun = 0;
+    let totalMigratedRun = 0;
+    let totalErrorsRun = 0;
+    let accumulatedLogs: string[] = [];
+    const initialPending = migrationQueue?.pendingMigrationCount || 0;
+
+    setMigrationResult({
+      inProgress: true,
+      success: true,
+      totalScanned: 0,
+      migratedCount: 0,
+      alreadyInSpacesCount: migrationQueue?.alreadyInSpacesCount || 0,
+      pendingCount: initialPending,
+      initialPending,
+      errorCount: 0,
+      logs: ['[STARTING] Executing keyset-batched transfer (5 candidates per batch)...'],
+    });
+
     try {
       const { getAdminAuthHeaders } = await import('@/lib/auth/recruiter-auth');
-      const res = await fetch('/api/admin/migrate-resumes', {
-        method: 'POST',
-        headers: { ...getAdminAuthHeaders() },
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setMigrationResult(data);
-        await reloadCandidates();
-      } else {
-        setMigrationError(data.error || 'Failed to execute migration');
+      const authHeaders = getAdminAuthHeaders();
+
+      for (let batchIdx = 0; batchIdx < 500; batchIdx++) {
+        if (migrationAbortRef.current) {
+          accumulatedLogs = [
+            ...accumulatedLogs,
+            '[PAUSED] Transfer paused by administrator. Click Execute Resume Transfer anytime to continue remaining rows.',
+          ].slice(-200);
+          setMigrationResult((prev: any) =>
+            prev ? { ...prev, inProgress: false, paused: true, logs: accumulatedLogs } : prev
+          );
+          break;
+        }
+
+        const res: Response = await fetch('/api/admin/migrate-resumes', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...authHeaders,
+          },
+          body: JSON.stringify({ batchSize: 5, cursorId }),
+        });
+        const data: any = await res.json();
+
+        if (!res.ok) {
+          setMigrationError(data.error || 'Failed to execute migration batch');
+          setMigrationResult((prev: any) => (prev ? { ...prev, inProgress: false, success: false } : null));
+          break;
+        }
+
+        totalProcessedRun += data.batchProcessedCount || 0;
+        totalMigratedRun += data.migratedCount || 0;
+        totalErrorsRun += data.errorCount || 0;
+
+        if (Array.isArray(data.logs) && data.logs.length > 0) {
+          accumulatedLogs = [...accumulatedLogs, ...data.logs].slice(-200);
+        }
+
+        if (data.status) {
+          setMigrationQueue(data.status);
+        }
+
+        const remainingPending = data.status?.pendingMigrationCount ?? data.remainingCount ?? 0;
+        const doneThisRun = !data.nextCursorId || data.remainingCount === 0 || data.batchProcessedCount === 0;
+
+        setMigrationResult({
+          inProgress: !doneThisRun,
+          paused: false,
+          success: totalErrorsRun === 0,
+          totalScanned: totalProcessedRun,
+          migratedCount: totalMigratedRun,
+          alreadyInSpacesCount: data.status?.alreadyInSpacesCount ?? 0,
+          pendingCount: remainingPending,
+          initialPending: Math.max(initialPending, totalProcessedRun + remainingPending),
+          errorCount: totalErrorsRun,
+          logs: accumulatedLogs,
+        });
+
+        if (doneThisRun) {
+          await reloadCandidates();
+          break;
+        }
+
+        cursorId = data.nextCursorId;
       }
     } catch (err: any) {
       setMigrationError(err.message || 'Migration network error');
+      setMigrationResult((prev: any) => (prev ? { ...prev, inProgress: false, success: false } : null));
     } finally {
       setIsMigratingResumes(false);
     }
+  };
+
+  const handleStopMigration = () => {
+    migrationAbortRef.current = true;
   };
 
   const fetchStorageConfig = async () => {
     setIsLoadingStorageConfig(true);
     try {
       const { getAdminAuthHeaders } = await import('@/lib/auth/recruiter-auth');
-      const res = await fetch('/api/admin/storage-config', {
-        headers: { ...getAdminAuthHeaders() },
-      });
-      if (res.ok) {
-        const data = await res.json();
+      const authHeaders = getAdminAuthHeaders();
+      const [cfgRes, queueRes] = await Promise.all([
+        fetch('/api/admin/storage-config', { headers: authHeaders }),
+        fetch('/api/admin/migrate-resumes', { headers: authHeaders }),
+      ]);
+
+      if (cfgRes.ok) {
+        const data = await cfgRes.json();
         setIsConfiguredSpaces(data.isConfigured);
         if (data.config) {
           setStorageConfig(prev => ({
@@ -257,6 +346,13 @@ function AdminDashboardContent() {
             hasAccessKey: Boolean(data.config.hasAccessKey),
             hasSecretKey: Boolean(data.config.hasSecretKey),
           });
+        }
+      }
+
+      if (queueRes.ok) {
+        const queueData = await queueRes.json();
+        if (queueData.queue) {
+          setMigrationQueue(queueData.queue);
         }
       }
     } catch (err) {
@@ -1422,29 +1518,91 @@ function AdminDashboardContent() {
                 </p>
               </div>
 
+              {/* Queue Summary & Batched Transfer Status */}
+              {migrationQueue && !migrationResult && (
+                <div className="p-3.5 border-2 border-[#111113] bg-white space-y-2">
+                  <div className="flex items-center justify-between text-[11px] font-bold">
+                    <span className="text-[#111113] uppercase">Live Resume Transfer Queue</span>
+                    <span className="text-[#FF4D00] uppercase">5 Candidates / Batch</span>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center text-[11px]">
+                    <div className="p-2 bg-[#F8F7F4] border border-[#111113]/20">
+                      <span className="block text-[#111113]/70 text-[10px] uppercase">Total</span>
+                      <strong className="text-sm">{migrationQueue.totalCandidates}</strong>
+                    </div>
+                    <div className="p-2 bg-amber-50 border border-amber-300">
+                      <span className="block text-amber-900/80 text-[10px] uppercase">Pending Transfer</span>
+                      <strong className="text-sm text-[#FF4D00]">{migrationQueue.pendingMigrationCount}</strong>
+                    </div>
+                    <div className="p-2 bg-emerald-50 border border-emerald-300">
+                      <span className="block text-emerald-900/80 text-[10px] uppercase">In Spaces</span>
+                      <strong className="text-sm text-emerald-800">{migrationQueue.alreadyInSpacesCount}</strong>
+                    </div>
+                    <div className="p-2 bg-[#F8F7F4] border border-[#111113]/20">
+                      <span className="block text-[#111113]/70 text-[10px] uppercase">No CV</span>
+                      <strong className="text-sm">{migrationQueue.noResumeCount}</strong>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {migrationResult && (
                 <div className={`p-4 border-2 space-y-3 animate-in fade-in ${
-                  migrationResult.errorCount > 0 || !migrationResult.success
+                  migrationResult.inProgress
+                    ? 'border-[#111113] bg-white text-[#111113]'
+                    : migrationResult.errorCount > 0 || !migrationResult.success
                     ? 'border-amber-700 bg-amber-50 text-amber-950'
                     : 'border-emerald-700 bg-emerald-50 text-emerald-950'
                 }`}>
-                  <div className={`flex items-center gap-2 font-bold text-xs ${
-                    migrationResult.errorCount > 0 || !migrationResult.success ? 'text-amber-900' : 'text-emerald-800'
-                  }`}>
-                    {migrationResult.errorCount > 0 || !migrationResult.success ? (
-                      <AlertTriangle className="w-4 h-4 text-amber-700" />
-                    ) : (
-                      <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                  <div className="flex items-center justify-between gap-2">
+                    <div className={`flex items-center gap-2 font-bold text-xs ${
+                      migrationResult.inProgress
+                        ? 'text-[#111113]'
+                        : migrationResult.errorCount > 0 || !migrationResult.success
+                        ? 'text-amber-900'
+                        : 'text-emerald-800'
+                    }`}>
+                      {migrationResult.inProgress ? (
+                        <RefreshCw className="w-4 h-4 text-[#FF4D00] animate-spin" />
+                      ) : migrationResult.errorCount > 0 || !migrationResult.success ? (
+                        <AlertTriangle className="w-4 h-4 text-amber-700" />
+                      ) : (
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                      )}
+                      <span>
+                        {migrationResult.inProgress
+                          ? `Transferring Resumes in Batches (${migrationResult.totalScanned}${migrationResult.initialPending ? ` / ${migrationResult.initialPending}` : ''} processed)...`
+                          : migrationResult.paused
+                          ? 'Migration Paused (Progress Saved)'
+                          : migrationResult.errorCount > 0 || !migrationResult.success
+                          ? 'Migration Completed With Errors'
+                          : 'Migration Execution Complete'}
+                      </span>
+                    </div>
+                    {typeof migrationResult.pendingCount === 'number' && (
+                      <span className="text-[10px] font-bold uppercase text-[#111113]/70">
+                        Remaining: {migrationResult.pendingCount}
+                      </span>
                     )}
-                    <span>
-                      {migrationResult.errorCount > 0 || !migrationResult.success
-                        ? 'Migration Completed With Errors'
-                        : 'Migration Execution Complete'}
-                    </span>
                   </div>
+
+                  {migrationResult.initialPending > 0 && (
+                    <div className="w-full h-2.5 bg-[#F8F7F4] border border-[#111113] overflow-hidden">
+                      <div
+                        className="h-full bg-[#FF4D00] transition-all duration-300"
+                        style={{
+                          width: `${Math.min(
+                            100,
+                            Math.round((migrationResult.totalScanned / migrationResult.initialPending) * 100)
+                          )}%`,
+                        }}
+                      />
+                    </div>
+                  )}
+
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center text-[11px]">
                     <div className="p-2 bg-white border border-[#111113]/20">
-                      <span className="block text-[#111113]/70 text-[10px] uppercase">Scanned</span>
+                      <span className="block text-[#111113]/70 text-[10px] uppercase">Processed</span>
                       <strong className="text-sm">{migrationResult.totalScanned}</strong>
                     </div>
                     <div className="p-2 bg-white border border-[#111113]/20">
@@ -1487,10 +1645,16 @@ function AdminDashboardContent() {
               <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => setShowMigrationModal(false)}
+                  onClick={() => {
+                    if (isMigratingResumes) {
+                      handleStopMigration();
+                    } else {
+                      setShowMigrationModal(false);
+                    }
+                  }}
                   className="btn-brutalist py-2.5 px-4"
                 >
-                  Close
+                  {isMigratingResumes ? 'Pause Transfer' : 'Close'}
                 </button>
                 <button
                   type="button"
@@ -1499,7 +1663,13 @@ function AdminDashboardContent() {
                   className="btn-brutalist btn-brutalist-primary py-2.5 px-4 flex items-center justify-center gap-2 disabled:opacity-50"
                 >
                   <UploadCloud className="w-4 h-4" />
-                  <span>{isMigratingResumes ? 'TRANSFERRING RESUMES...' : 'EXECUTE RESUME TRANSFER'}</span>
+                  <span>
+                    {isMigratingResumes
+                      ? 'TRANSFERRING BATCHES...'
+                      : migrationQueue && migrationQueue.pendingMigrationCount > 0
+                      ? `TRANSFER ${migrationQueue.pendingMigrationCount} PENDING RESUMES`
+                      : 'EXECUTE RESUME TRANSFER'}
+                  </span>
                 </button>
               </div>
             </div>
