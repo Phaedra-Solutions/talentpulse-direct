@@ -1,6 +1,12 @@
 import { Role, Technology, RoleTechnology, RoleStatus, TechnologyStatus } from '@/types/roles-tech';
 import { getSupabaseServerClient, isServerSupabaseConfigured } from './supabase/server';
 import { getSupabaseBrowserClient, isSupabaseConfigured } from './supabase/client';
+import {
+  slugifyTech,
+  canonicalTechKey,
+  findBestMatchingTechnology,
+  DuplicateMatchReason,
+} from './tech-normalization';
 
 export const INITIAL_ROLES: Role[] = [
   {
@@ -286,12 +292,7 @@ function getSupabaseClient() {
 }
 
 function slugify(text: string): string {
-  return text
-    .toLowerCase()
-    .trim()
-    .replace(/[^\w\s-]/g, '')
-    .replace(/[\s_-]+/g, '-')
-    .replace(/^-+|-+$/g, '');
+  return slugifyTech(text);
 }
 
 /**
@@ -413,12 +414,196 @@ export async function getRolesList(includeClosed = true): Promise<Role[]> {
   return rolesWithTech.sort((a, b) => a.display_order - b.display_order);
 }
 
+export interface PaginatedRolesResult {
+  roles: Role[];
+  total: number;
+  page: number;
+  limit: number;
+  counts?: {
+    open: number;
+    closed: number;
+    all: number;
+  };
+}
+
+/**
+ * Get paginated roles with SQL filtering, summary projection (omits markdown body when summary=true),
+ * and tight .in('role_id', pageRoleIds) mapping lookups instead of scanning all role_technologies.
+ */
+export async function getRolesPaginated(filters?: {
+  includeClosed?: boolean;
+  status?: RoleStatus | 'all';
+  query?: string;
+  page?: number;
+  limit?: number;
+  includeCounts?: boolean;
+  summary?: boolean;
+}): Promise<PaginatedRolesResult> {
+  const page = filters?.page && filters.page > 0 ? filters.page : 1;
+  const limit = filters?.limit && filters.limit > 0 ? Math.min(filters.limit, 100) : 12;
+  const from = (page - 1) * limit;
+  const to = from + limit - 1;
+  const includeClosed = filters?.includeClosed !== false;
+  const effectiveStatus: RoleStatus | 'all' = !includeClosed
+    ? 'open'
+    : filters?.status || 'all';
+
+  const supabase = getSupabaseClient();
+  if (supabase) {
+    try {
+      const roleCols = filters?.summary
+        ? 'id, slug, title, short_description, status, display_order, created_at, updated_at'
+        : 'id, slug, title, short_description, description, status, display_order, created_at, updated_at';
+
+      let q = supabase.from('roles').select(roleCols, { count: 'exact' });
+      if (effectiveStatus !== 'all') {
+        q = q.eq('status', effectiveStatus);
+      }
+      if (filters?.query && filters.query.trim().length > 0) {
+        const safe = filters.query.trim().replace(/[,()%]/g, '').trim();
+        if (safe) {
+          q = q.or(`title.ilike.%${safe}%,slug.ilike.%${safe}%,short_description.ilike.%${safe}%`);
+        }
+      }
+      q = q.order('display_order', { ascending: true }).range(from, to);
+
+      const countQueries = filters?.includeCounts
+        ? Promise.all([
+            supabase.from('roles').select('id', { count: 'exact', head: true }).eq('status', 'open'),
+            supabase.from('roles').select('id', { count: 'exact', head: true }).eq('status', 'closed'),
+          ])
+        : Promise.resolve(null);
+
+      const [{ data: dbRoles, error, count }, countsRes] = await Promise.all([q, countQueries]);
+
+      if (!error && Array.isArray(dbRoles)) {
+        const roleIds = dbRoles.map((r: any) => r.id).filter(Boolean);
+        const techsByRoleId = new Map<string, Technology[]>();
+
+        if (roleIds.length > 0) {
+          const { data: mappings } = await supabase
+            .from('role_technologies')
+            .select('role_id, technology_id, is_featured')
+            .in('role_id', roleIds);
+
+          const techIds = Array.from(
+            new Set((mappings || []).map((m: any) => m.technology_id).filter(Boolean))
+          );
+
+          if (techIds.length > 0) {
+            const { data: approvedTechs } = await supabase
+              .from('technologies')
+              .select('id, name, slug, status, is_featured, created_at, updated_at')
+              .in('id', techIds)
+              .eq('status', 'approved');
+
+            const techById = new Map<string, Technology>();
+            for (const t of approvedTechs || []) {
+              techById.set(t.id, t);
+            }
+
+            for (const m of mappings || []) {
+              const tech = techById.get(m.technology_id);
+              if (!tech) continue;
+              const arr = techsByRoleId.get(m.role_id);
+              if (arr) arr.push(tech);
+              else techsByRoleId.set(m.role_id, [tech]);
+            }
+          }
+        }
+
+        const enrichedRoles: Role[] = dbRoles.map((r: any) => ({
+          description: '',
+          ...r,
+          technologies: techsByRoleId.get(r.id) || [],
+        }));
+
+        const counts = countsRes
+          ? {
+              open: countsRes[0].count || 0,
+              closed: countsRes[1].count || 0,
+              all: (countsRes[0].count || 0) + (countsRes[1].count || 0),
+            }
+          : undefined;
+
+        return {
+          roles: enrichedRoles,
+          total: typeof count === 'number' ? count : enrichedRoles.length,
+          page,
+          limit,
+          counts,
+        };
+      }
+    } catch {
+      // Fall through to local/memory fallback
+    }
+  }
+
+  let all = await getRolesList(includeClosed);
+  const counts = filters?.includeCounts
+    ? {
+        open: all.filter((r) => r.status === 'open').length,
+        closed: all.filter((r) => r.status === 'closed').length,
+        all: all.length,
+      }
+    : undefined;
+
+  if (effectiveStatus !== 'all') {
+    all = all.filter((r) => r.status === effectiveStatus);
+  }
+  if (filters?.query && filters.query.trim()) {
+    const ql = filters.query.trim().toLowerCase();
+    all = all.filter(
+      (r) =>
+        r.title.toLowerCase().includes(ql) ||
+        r.slug.toLowerCase().includes(ql) ||
+        r.short_description.toLowerCase().includes(ql)
+    );
+  }
+  const total = all.length;
+  const sliced = all.slice(from, from + limit);
+  return { roles: sliced, total, page, limit, counts };
+}
+
 /**
  * Get single role by slug or ID
  */
 export async function getRoleBySlugOrId(identifier: string): Promise<Role | null> {
+  const supabase = getSupabaseClient();
+  if (supabase) {
+    try {
+      const safe = identifier.replace(/[,()%]/g, '').trim();
+      const { data: role } = await supabase
+        .from('roles')
+        .select('id, slug, title, short_description, description, status, display_order, created_at, updated_at')
+        .or(`id.eq.${safe},slug.eq.${safe}`)
+        .limit(1)
+        .maybeSingle();
+
+      if (role) {
+        const { data: mappings } = await supabase
+          .from('role_technologies')
+          .select('technology_id')
+          .eq('role_id', role.id);
+
+        const techIds = (mappings || []).map((m: any) => m.technology_id).filter(Boolean);
+        let roleTechs: Technology[] = [];
+        if (techIds.length > 0) {
+          const { data: approvedTechs } = await supabase
+            .from('technologies')
+            .select('id, name, slug, status, is_featured, created_at, updated_at')
+            .in('id', techIds)
+            .eq('status', 'approved');
+          roleTechs = (approvedTechs || []) as Technology[];
+        }
+        return { ...(role as Role), technologies: roleTechs };
+      }
+    } catch {
+      // Fallback
+    }
+  }
   const roles = await getRolesList(true);
-  const found = roles.find(r => r.slug === identifier || r.id === identifier);
+  const found = roles.find((r) => r.slug === identifier || r.id === identifier);
   return found || null;
 }
 
@@ -991,58 +1176,103 @@ export async function getTopTechnologiesForRole(roleIdentifier: string, limit = 
 }
 
 /**
- * Submit custom technology from candidate (single indexed lookup instead of full-table scan)
+ * Submit custom or master technology with multi-layer deduplication BEFORE saving:
+ * 1. Indexed exact slug / case-insensitive name / canonical_key lookup
+ * 2. Compact all-tech scan comparing canonical fingerprint & known aliases + Damerau-Levenshtein typo match
+ * 3. DB UNIQUE(canonical_key) race-condition handling (error 23505)
  */
 export async function submitCustomTechnology(
   name: string,
   roleSlugOrId?: string,
   candidateId?: string
-): Promise<{ technology: Technology; isNew: boolean }> {
+): Promise<{ technology: Technology; isNew: boolean; matchedReason?: DuplicateMatchReason }> {
   const cleanName = name.trim();
   if (cleanName.length === 0) {
     throw new Error('Technology name cannot be empty');
   }
 
-  const slug = slugify(cleanName);
+  const slug = slugifyTech(cleanName);
+  const canonKey = canonicalTechKey(cleanName);
   const supabase = getSupabaseClient();
+
+  const ensureRoleLink = async (techId: string) => {
+    if (!roleSlugOrId || !supabase) return;
+    const role = await getRoleBySlugOrId(roleSlugOrId);
+    if (role) {
+      await supabase
+        .from('role_technologies')
+        .upsert(
+          [{ role_id: role.id, technology_id: techId, is_featured: false }],
+          { onConflict: 'role_id,technology_id', ignoreDuplicates: true }
+        );
+    }
+  };
 
   if (supabase) {
     try {
       const safeClean = cleanName.replace(/[,()%]/g, '').trim();
-      const { data: existing } = await supabase
+
+      // Stage 1: Fast indexed lookup by slug or exact name (case-insensitive)
+      const { data: exactRow } = await supabase
         .from('technologies')
         .select('id, name, slug, status, is_featured, created_at, updated_at')
         .or(`slug.eq.${slug},name.ilike.${safeClean}`)
         .limit(1)
         .maybeSingle();
 
-      if (existing) {
-        if (roleSlugOrId) {
-          const role = await getRoleBySlugOrId(roleSlugOrId);
-          if (role) {
-            await supabase
-              .from('role_technologies')
-              .upsert(
-                [{ role_id: role.id, technology_id: existing.id, is_featured: false }],
-                { onConflict: 'role_id,technology_id', ignoreDuplicates: true }
-              );
-          }
-        }
-        return { technology: existing as Technology, isNew: false };
+      if (exactRow) {
+        await ensureRoleLink(exactRow.id);
+        return { technology: exactRow as Technology, isNew: false, matchedReason: 'exact' };
       }
 
+      // Stage 2: Load lightweight projection of existing technologies for canonical alias + typo deduplication
+      const existingCompact: Array<{
+        id: string;
+        name: string;
+        slug: string;
+        status: TechnologyStatus;
+        is_featured: boolean;
+        created_at: string;
+        updated_at: string;
+      }> = [];
+      let offset = 0;
+      const chunkSize = 1000;
+      while (offset < 5000) {
+        const { data: chunk, error: chunkErr } = await supabase
+          .from('technologies')
+          .select('id, name, slug, status, is_featured, created_at, updated_at')
+          .range(offset, offset + chunkSize - 1);
+        if (chunkErr || !chunk || chunk.length === 0) break;
+        existingCompact.push(...(chunk as any));
+        if (chunk.length < chunkSize) break;
+        offset += chunkSize;
+      }
+
+      const duplicate = findBestMatchingTechnology(cleanName, existingCompact, { allowFuzzy: true });
+      if (duplicate) {
+        await ensureRoleLink(duplicate.match.id);
+        return {
+          technology: duplicate.match as Technology,
+          isNew: false,
+          matchedReason: duplicate.reason,
+        };
+      }
+
+      // Stage 3: Insert new pending technology with canonical_key (fallback cleanly if DB hasn't added column yet)
+      const now = new Date().toISOString();
       const newTech: Technology = {
         id: `tech-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
         name: cleanName,
         slug,
+        canonical_key: canonKey || undefined,
         status: 'pending',
         is_featured: false,
         suggested_by_candidate_id: candidateId || null,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
+        created_at: now,
+        updated_at: now,
       };
 
-      const { error: insertErr } = await supabase.from('technologies').insert([{
+      const insertPayload: Record<string, any> = {
         id: newTech.id,
         name: newTech.name,
         slug: newTech.slug,
@@ -1050,19 +1280,36 @@ export async function submitCustomTechnology(
         is_featured: newTech.is_featured,
         created_at: newTech.created_at,
         updated_at: newTech.updated_at,
-      }]);
+      };
+      if (canonKey) {
+        insertPayload.canonical_key = canonKey;
+      }
+
+      let { error: insertErr } = await supabase.from('technologies').insert([insertPayload]);
+
+      // Retry without canonical_key if column isn't present in DB yet
+      if (insertErr && insertErr.message?.includes('canonical_key')) {
+        delete insertPayload.canonical_key;
+        const retry = await supabase.from('technologies').insert([insertPayload]);
+        insertErr = retry.error;
+      }
+
+      // Handle concurrent unique constraint collision (Postgres 23505) by returning existing winning row
+      if (insertErr && insertErr.code === '23505') {
+        const { data: winner } = await supabase
+          .from('technologies')
+          .select('id, name, slug, status, is_featured, created_at, updated_at')
+          .or(`slug.eq.${slug},name.ilike.${safeClean}`)
+          .limit(1)
+          .maybeSingle();
+        if (winner) {
+          await ensureRoleLink(winner.id);
+          return { technology: winner as Technology, isNew: false, matchedReason: 'canonical_alias' };
+        }
+      }
 
       if (!insertErr) {
-        if (roleSlugOrId) {
-          const role = await getRoleBySlugOrId(roleSlugOrId);
-          if (role) {
-            await supabase.from('role_technologies').insert([{
-              role_id: role.id,
-              technology_id: newTech.id,
-              is_featured: false,
-            }]);
-          }
-        }
+        await ensureRoleLink(newTech.id);
         return { technology: newTech, isNew: true };
       }
     } catch (e) {
@@ -1070,31 +1317,31 @@ export async function submitCustomTechnology(
     }
   }
 
-  // Fallback local/memory deduplication
-  const allTechs = await getTechnologiesList({ status: 'all' });
-  const existing = allTechs.find(
-    (t) => t.name.toLowerCase() === cleanName.toLowerCase() || t.slug === slug
-  );
+  // Fallback local/memory deduplication using the same canonical + fuzzy matcher
+  const allTechs = await getTechnologiesList({ status: 'all', limit: 2000 });
+  const duplicate = findBestMatchingTechnology(cleanName, allTechs, { allowFuzzy: true });
 
-  if (existing) {
+  if (duplicate) {
     if (roleSlugOrId) {
       const role = await getRoleBySlugOrId(roleSlugOrId);
       if (role) {
-        await linkTechToRole(role.id, existing.id);
+        await linkTechToRole(role.id, duplicate.match.id);
       }
     }
-    return { technology: existing, isNew: false };
+    return { technology: duplicate.match, isNew: false, matchedReason: duplicate.reason };
   }
 
+  const now = new Date().toISOString();
   const newTech: Technology = {
     id: `tech-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     name: cleanName,
     slug,
+    canonical_key: canonKey || undefined,
     status: 'pending',
     is_featured: false,
     suggested_by_candidate_id: candidateId || null,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
+    created_at: now,
+    updated_at: now,
   };
 
   const updatedTechs = [...allTechs, newTech];
@@ -1123,7 +1370,7 @@ async function linkTechToRole(roleId: string, techId: string) {
     ? JSON.parse(localStorage.getItem(ROLE_TECHS_STORAGE_KEY) || '[]')
     : serverRoleTechs;
 
-  const exists = mappings.some(m => m.role_id === roleId && m.technology_id === techId);
+  const exists = mappings.some((m) => m.role_id === roleId && m.technology_id === techId);
   if (!exists) {
     mappings.push({ role_id: roleId, technology_id: techId, is_featured: false });
     if (typeof window !== 'undefined') {
@@ -1172,7 +1419,8 @@ export async function bulkUpdateTechnologyStatus(
 }
 
 /**
- * Update a single technology (Approve, Reject, rename, feature) without full-table scan
+ * Update a single technology (rename, slug, status, featured flag, role associations)
+ * with pre-save canonical duplicate check so renames cannot create duplicates.
  */
 export async function updateTechnologyRecord(
   id: string,
@@ -1196,11 +1444,16 @@ export async function updateTechnologyRecord(
     return json.technology;
   }
 
+  const cleanName = typeof data.name === 'string' ? data.name.trim() : undefined;
+  if (typeof data.name === 'string' && (!cleanName || cleanName.length === 0)) {
+    throw new Error('Technology name cannot be empty');
+  }
+
   const supabase = getSupabaseClient();
   if (supabase) {
     const { data: existing, error: fetchErr } = await supabase
       .from('technologies')
-      .select('*')
+      .select('id, name, slug, status, is_featured, created_at, updated_at')
       .eq('id', id)
       .maybeSingle();
 
@@ -1211,22 +1464,72 @@ export async function updateTechnologyRecord(
       throw new Error('Technology not found');
     }
 
+    const nextName = cleanName ?? existing.name;
+    const nextSlug =
+      typeof data.slug === 'string' && data.slug.trim()
+        ? slugifyTech(data.slug.trim())
+        : cleanName
+        ? slugifyTech(cleanName)
+        : existing.slug;
+    const nextCanonKey = canonicalTechKey(nextName);
+
+    // Check for duplicate collision on another row whenever name or slug is changing
+    if (cleanName !== undefined || data.slug !== undefined) {
+      const { data: others } = await supabase
+        .from('technologies')
+        .select('id, name, slug, status')
+        .neq('id', id)
+        .limit(3000);
+
+      const collision = findBestMatchingTechnology(
+        nextName,
+        (others || []) as Technology[],
+        { allowFuzzy: false }
+      );
+      if (collision) {
+        throw new Error(
+          `Duplicate detected: "${nextName}" matches existing technology "${collision.match.name}" (${collision.match.status}). Use Merge instead.`
+        );
+      }
+
+      const slugDup = (others || []).find((o: any) => o.slug === nextSlug);
+      if (slugDup) {
+        throw new Error(
+          `Slug "${nextSlug}" is already used by "${slugDup.name}". Use Merge instead.`
+        );
+      }
+    }
+
     const updated: Technology = {
-      ...existing,
+      ...(existing as Technology),
       ...data,
+      name: nextName,
+      slug: nextSlug,
+      canonical_key: nextCanonKey || undefined,
       updated_at: new Date().toISOString(),
     };
 
-    const { error: techErr } = await supabase
+    const updatePayload: Record<string, any> = {
+      name: updated.name,
+      slug: updated.slug,
+      status: updated.status,
+      is_featured: updated.is_featured,
+      updated_at: updated.updated_at,
+    };
+    if (nextCanonKey) {
+      updatePayload.canonical_key = nextCanonKey;
+    }
+
+    let { error: techErr } = await supabase
       .from('technologies')
-      .update({
-        name: updated.name,
-        slug: updated.slug,
-        status: updated.status,
-        is_featured: updated.is_featured,
-        updated_at: updated.updated_at,
-      })
+      .update(updatePayload)
       .eq('id', id);
+
+    if (techErr && techErr.message?.includes('canonical_key')) {
+      delete updatePayload.canonical_key;
+      const retry = await supabase.from('technologies').update(updatePayload).eq('id', id);
+      techErr = retry.error;
+    }
 
     if (techErr) {
       console.error('Supabase technology update error:', techErr);
@@ -1243,6 +1546,7 @@ export async function updateTechnologyRecord(
         }));
         await supabase.from('role_technologies').insert(rows);
       }
+      updated.role_ids = data.role_ids;
     }
 
     return updated;
@@ -1252,9 +1556,30 @@ export async function updateTechnologyRecord(
   if (index === -1) {
     throw new Error('Technology not found');
   }
+
+  const nextName = cleanName ?? serverTechs[index].name;
+  const nextSlug =
+    typeof data.slug === 'string' && data.slug.trim()
+      ? slugifyTech(data.slug.trim())
+      : cleanName
+      ? slugifyTech(cleanName)
+      : serverTechs[index].slug;
+
+  if (cleanName !== undefined || data.slug !== undefined) {
+    const others = serverTechs.filter((t) => t.id !== id);
+    const collision = findBestMatchingTechnology(nextName, others, { allowFuzzy: false });
+    if (collision) {
+      throw new Error(
+        `Duplicate detected: "${nextName}" matches existing technology "${collision.match.name}". Use Merge instead.`
+      );
+    }
+  }
+
   const updated: Technology = {
     ...serverTechs[index],
     ...data,
+    name: nextName,
+    slug: nextSlug,
     updated_at: new Date().toISOString(),
   };
   serverTechs[index] = updated;
@@ -1307,13 +1632,287 @@ export async function getCandidateCountForTech(techNameOrSlug: string): Promise<
 }
 
 /**
- * Delete a technology with candidate safety check (zero full-table scans)
+ * Merge one or multiple duplicate technologies (`sourceIds`) into a canonical `targetId`.
+ * 1. Updates `candidates.tech_stack` (zero resume blobs touched) to replace source names with target name cleanly
+ * 2. Transfers `role_technologies` associations without duplicates
+ * 3. Deletes redundant source technologies
  */
-export async function deleteTechnologyRecord(id: string): Promise<{ success: boolean; error?: string }> {
+export async function mergeTechnologies(
+  sourceIds: string[],
+  targetId: string,
+  options?: { approveTarget?: boolean }
+): Promise<{
+  mergedCount: number;
+  updatedCandidatesCount: number;
+  transferredRoleLinksCount: number;
+  targetTechnology: Technology;
+}> {
+  const uniqueSources = Array.from(new Set(sourceIds.filter((s) => Boolean(s) && s !== targetId)));
+  if (uniqueSources.length === 0) {
+    throw new Error('At least one source technology different from the target is required.');
+  }
+
+  const now = new Date().toISOString();
+  const supabase = getSupabaseClient();
+
+  if (supabase) {
+    const { data: targetRow, error: targetErr } = await supabase
+      .from('technologies')
+      .select('id, name, slug, status, is_featured, created_at, updated_at')
+      .eq('id', targetId)
+      .maybeSingle();
+
+    if (targetErr || !targetRow) {
+      throw new Error(targetErr?.message || 'Target technology not found');
+    }
+
+    const { data: sourceRows, error: srcErr } = await supabase
+      .from('technologies')
+      .select('id, name, slug, status')
+      .in('id', uniqueSources);
+
+    if (srcErr || !sourceRows || sourceRows.length === 0) {
+      throw new Error(srcErr?.message || 'Source technologies not found');
+    }
+
+    // Build case/variant matching set for source technologies
+    const sourceVariants = new Set<string>();
+    const sourceNamesLower = new Set<string>();
+    for (const s of sourceRows as any[]) {
+      const clean = (s.name || '').trim();
+      if (!clean) continue;
+      sourceNamesLower.add(clean.toLowerCase());
+      sourceVariants.add(clean);
+      sourceVariants.add(clean.toLowerCase());
+      sourceVariants.add(clean.toUpperCase());
+      sourceVariants.add(clean.charAt(0).toUpperCase() + clean.slice(1));
+    }
+
+    // 1. Update affected candidates' tech_stack without touching resume_url blobs
+    let updatedCandidatesCount = 0;
+    const variantsArr = Array.from(sourceVariants);
+    if (variantsArr.length > 0) {
+      let offset = 0;
+      const chunkSize = 500;
+      while (offset < 10000) {
+        const { data: candChunk, error: candErr } = await supabase
+          .from('candidates')
+          .select('id, tech_stack')
+          .overlaps('tech_stack', variantsArr)
+          .range(offset, offset + chunkSize - 1);
+
+        if (candErr || !candChunk || candChunk.length === 0) break;
+
+        for (const c of candChunk as any[]) {
+          if (!Array.isArray(c.tech_stack)) continue;
+          let changed = false;
+          const nextStack: string[] = [];
+          const seen = new Set<string>();
+
+          for (const rawItem of c.tech_stack) {
+            if (typeof rawItem !== 'string') continue;
+            const trimmed = rawItem.trim();
+            if (!trimmed) continue;
+
+            const isSource = sourceNamesLower.has(trimmed.toLowerCase());
+            const replacement = isSource ? targetRow.name : trimmed;
+            if (isSource) changed = true;
+
+            const key = replacement.toLowerCase();
+            if (!seen.has(key)) {
+              seen.add(key);
+              nextStack.push(replacement);
+            } else if (isSource) {
+              changed = true;
+            }
+          }
+
+          if (changed) {
+            const { error: updCandErr } = await supabase
+              .from('candidates')
+              .update({ tech_stack: nextStack, updated_at: now })
+              .eq('id', c.id);
+            if (!updCandErr) {
+              updatedCandidatesCount++;
+            }
+          }
+        }
+
+        if (candChunk.length < chunkSize) break;
+        offset += chunkSize;
+      }
+    }
+
+    // 2. Transfer role_technologies mappings from sources -> target
+    const { data: srcMappings } = await supabase
+      .from('role_technologies')
+      .select('role_id, is_featured')
+      .in('technology_id', uniqueSources);
+
+    const uniqueRoleIds = Array.from(
+      new Set((srcMappings || []).map((m: any) => m.role_id).filter(Boolean))
+    );
+
+    if (uniqueRoleIds.length > 0) {
+      await supabase
+        .from('role_technologies')
+        .upsert(
+          uniqueRoleIds.map((roleId) => ({
+            role_id: roleId,
+            technology_id: targetId,
+            is_featured: Boolean(targetRow.is_featured),
+          })),
+          { onConflict: 'role_id,technology_id', ignoreDuplicates: true }
+        );
+    }
+
+    // Remove old source role_technologies links and source technology rows
+    await supabase.from('role_technologies').delete().in('technology_id', uniqueSources);
+    const { error: delSrcErr } = await supabase
+      .from('technologies')
+      .delete()
+      .in('id', uniqueSources);
+
+    if (delSrcErr) {
+      throw new Error(`Failed removing merged source technologies: ${delSrcErr.message}`);
+    }
+
+    // Optionally promote target technology to approved
+    let finalTarget = targetRow as Technology;
+    if (options?.approveTarget !== false && targetRow.status !== 'approved') {
+      const { data: promoted } = await supabase
+        .from('technologies')
+        .update({ status: 'approved', updated_at: now })
+        .eq('id', targetId)
+        .select('id, name, slug, status, is_featured, created_at, updated_at')
+        .maybeSingle();
+      if (promoted) {
+        finalTarget = promoted as Technology;
+      }
+    }
+
+    return {
+      mergedCount: sourceRows.length,
+      updatedCandidatesCount,
+      transferredRoleLinksCount: uniqueRoleIds.length,
+      targetTechnology: finalTarget,
+    };
+  }
+
+  // Fallback offline / memory store merge
+  const target = serverTechs.find((t) => t.id === targetId);
+  if (!target) {
+    throw new Error('Target technology not found');
+  }
+  const sourceSet = new Set(uniqueSources);
+  const existingSources = serverTechs.filter((t) => sourceSet.has(t.id));
+
+  const rolesFromSources = serverRoleTechs
+    .filter((m) => sourceSet.has(m.technology_id))
+    .map((m) => m.role_id);
+
+  let transferredRoleLinksCount = 0;
+  for (const rId of rolesFromSources) {
+    const already = serverRoleTechs.some((m) => m.role_id === rId && m.technology_id === targetId);
+    if (!already) {
+      serverRoleTechs.push({
+        role_id: rId,
+        technology_id: targetId,
+        is_featured: target.is_featured,
+      });
+      transferredRoleLinksCount++;
+    }
+  }
+
+  serverRoleTechs = serverRoleTechs.filter((m) => !sourceSet.has(m.technology_id));
+  serverTechs = serverTechs
+    .filter((t) => !sourceSet.has(t.id))
+    .map((t) =>
+      t.id === targetId && options?.approveTarget !== false
+        ? { ...t, status: 'approved', updated_at: now }
+        : t
+    );
+
+  return {
+    mergedCount: existingSources.length,
+    updatedCandidatesCount: 0,
+    transferredRoleLinksCount,
+    targetTechnology: {
+      ...target,
+      status: options?.approveTarget !== false ? 'approved' : target.status,
+    },
+  };
+}
+
+/**
+ * Helper to strip deleted technology names from affected candidates.tech_stack when force=true.
+ */
+async function removeTechNamesFromCandidates(
+  supabase: NonNullable<ReturnType<typeof getSupabaseClient>>,
+  techNames: string[]
+): Promise<number> {
+  const variants = new Set<string>();
+  const lowerSet = new Set<string>();
+  for (const name of techNames) {
+    const clean = name.trim();
+    if (!clean) continue;
+    lowerSet.add(clean.toLowerCase());
+    variants.add(clean);
+    variants.add(clean.toLowerCase());
+    variants.add(clean.toUpperCase());
+    variants.add(clean.charAt(0).toUpperCase() + clean.slice(1));
+  }
+
+  let updatedCount = 0;
+  const variantArr = Array.from(variants);
+  if (variantArr.length === 0) return 0;
+
+  let offset = 0;
+  const chunkSize = 500;
+  const now = new Date().toISOString();
+
+  while (offset < 10000) {
+    const { data: chunk, error } = await supabase
+      .from('candidates')
+      .select('id, tech_stack')
+      .overlaps('tech_stack', variantArr)
+      .range(offset, offset + chunkSize - 1);
+
+    if (error || !chunk || chunk.length === 0) break;
+
+    for (const c of chunk as any[]) {
+      if (!Array.isArray(c.tech_stack)) continue;
+      const filtered = c.tech_stack.filter(
+        (item: any) => typeof item === 'string' && !lowerSet.has(item.trim().toLowerCase())
+      );
+      if (filtered.length !== c.tech_stack.length) {
+        const { error: updErr } = await supabase
+          .from('candidates')
+          .update({ tech_stack: filtered, updated_at: now })
+          .eq('id', c.id);
+        if (!updErr) updatedCount++;
+      }
+    }
+
+    if (chunk.length < chunkSize) break;
+    offset += chunkSize;
+  }
+
+  return updatedCount;
+}
+
+/**
+ * Delete a technology (blocks if candidates are linked unless options.force === true).
+ */
+export async function deleteTechnologyRecord(
+  id: string,
+  options?: { force?: boolean }
+): Promise<{ success: boolean; error?: string; cleanedCandidates?: number }> {
   // If in browser, dispatch through authenticated admin API endpoint
   if (typeof window !== 'undefined') {
     const { getAdminAuthHeaders } = await import('./auth/recruiter-auth');
-    const res = await fetch(`/api/technologies/${id}`, {
+    const url = options?.force ? `/api/technologies/${id}?force=true` : `/api/technologies/${id}`;
+    const res = await fetch(url, {
       method: 'DELETE',
       headers: {
         ...getAdminAuthHeaders(),
@@ -1323,7 +1922,7 @@ export async function deleteTechnologyRecord(id: string): Promise<{ success: boo
     if (!res.ok || !json.success) {
       return { success: false, error: json.error || 'Failed to delete technology' };
     }
-    return { success: true };
+    return { success: true, cleanedCandidates: json.cleanedCandidates };
   }
 
   const supabase = getSupabaseClient();
@@ -1338,12 +1937,16 @@ export async function deleteTechnologyRecord(id: string): Promise<{ success: boo
       return { success: false, error: 'Technology not found' };
     }
 
+    let cleanedCandidates = 0;
     const count = await getCandidateCountForTech(tech.name);
     if (count > 0) {
-      return {
-        success: false,
-        error: `Cannot delete technology "${tech.name}" because it is associated with ${count} candidate(s). You can reject or hide it instead.`,
-      };
+      if (!options?.force) {
+        return {
+          success: false,
+          error: `Cannot delete technology "${tech.name}" because it is associated with ${count} candidate(s). Merge it into another technology or choose Force Delete.`,
+        };
+      }
+      cleanedCandidates = await removeTechNamesFromCandidates(supabase, [tech.name]);
     }
 
     await supabase.from('role_technologies').delete().eq('technology_id', id);
@@ -1352,7 +1955,7 @@ export async function deleteTechnologyRecord(id: string): Promise<{ success: boo
       console.error('Supabase technology delete error:', delErr);
       return { success: false, error: delErr.message };
     }
-    return { success: true };
+    return { success: true, cleanedCandidates };
   }
 
   const tech = serverTechs.find((t) => t.id === id);
@@ -1361,15 +1964,86 @@ export async function deleteTechnologyRecord(id: string): Promise<{ success: boo
   }
 
   const count = await getCandidateCountForTech(tech.name);
-  if (count > 0) {
+  if (count > 0 && !options?.force) {
     return {
       success: false,
-      error: `Cannot delete technology "${tech.name}" because it is associated with ${count} candidate(s). You can reject or hide it instead.`,
+      error: `Cannot delete technology "${tech.name}" because it is associated with ${count} candidate(s). You can merge or reject it instead.`,
     };
   }
 
   serverTechs = serverTechs.filter((t) => t.id !== id);
   serverRoleTechs = serverRoleTechs.filter((m) => m.technology_id !== id);
 
-  return { success: true };
+  return { success: true, cleanedCandidates: 0 };
 }
+
+/**
+ * Bulk delete multiple technologies (supports optional force removal from candidates.tech_stack).
+ */
+export async function bulkDeleteTechnologies(
+  ids: string[],
+  options?: { force?: boolean }
+): Promise<{
+  deletedCount: number;
+  skippedBlocked: Array<{ id: string; name: string; count: number }>;
+}> {
+  const cleanIds = Array.from(new Set(ids.filter(Boolean)));
+  if (cleanIds.length === 0) return { deletedCount: 0, skippedBlocked: [] };
+
+  const supabase = getSupabaseClient();
+  if (supabase) {
+    const { data: rows, error } = await supabase
+      .from('technologies')
+      .select('id, name')
+      .in('id', cleanIds);
+
+    if (error) {
+      throw new Error(`Database error loading technologies for deletion: ${error.message}`);
+    }
+
+    const deletableIds: string[] = [];
+    const deletableNames: string[] = [];
+    const skippedBlocked: Array<{ id: string; name: string; count: number }> = [];
+
+    for (const row of (rows || []) as any[]) {
+      if (options?.force) {
+        deletableIds.push(row.id);
+        deletableNames.push(row.name);
+      } else {
+        const count = await getCandidateCountForTech(row.name);
+        if (count > 0) {
+          skippedBlocked.push({ id: row.id, name: row.name, count });
+        } else {
+          deletableIds.push(row.id);
+          deletableNames.push(row.name);
+        }
+      }
+    }
+
+    if (deletableIds.length > 0) {
+      if (options?.force) {
+        await removeTechNamesFromCandidates(supabase, deletableNames);
+      }
+      await supabase.from('role_technologies').delete().in('technology_id', deletableIds);
+      const { error: delErr } = await supabase
+        .from('technologies')
+        .delete()
+        .in('id', deletableIds);
+      if (delErr) {
+        throw new Error(`Database error bulk deleting technologies: ${delErr.message}`);
+      }
+    }
+
+    return {
+      deletedCount: deletableIds.length,
+      skippedBlocked,
+    };
+  }
+
+  const idSet = new Set(cleanIds);
+  const existingCount = serverTechs.filter((t) => idSet.has(t.id)).length;
+  serverTechs = serverTechs.filter((t) => !idSet.has(t.id));
+  serverRoleTechs = serverRoleTechs.filter((m) => !idSet.has(m.technology_id));
+  return { deletedCount: existingCount, skippedBlocked: [] };
+}
+

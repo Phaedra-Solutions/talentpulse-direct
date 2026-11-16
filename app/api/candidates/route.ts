@@ -9,6 +9,8 @@ import {
   deleteResumeFromSpaces, 
   buildResumeStorageKey 
 } from '@/lib/storage/do-spaces';
+import { canonicalTechKey, deduplicateTechStack } from '@/lib/tech-normalization';
+import { INITIAL_TECHNOLOGIES } from '@/lib/roles-tech-store';
 
 function parseBase64FileData(dataUri: string): { buffer: Buffer; mimeType: string } | null {
   if (!dataUri || typeof dataUri !== 'string' || !dataUri.startsWith('data:')) return null;
@@ -60,6 +62,36 @@ async function getVerifiedSupabaseCandidateEmail(
   } catch {
     return null;
   }
+}
+
+async function normalizeCandidateTechStack(
+  techStack: string[],
+  supabase: ReturnType<typeof getSupabaseServerClient>
+): Promise<string[]> {
+  if (!Array.isArray(techStack) || techStack.length === 0) return [];
+  const canonicalLookup = new Map<string, string>();
+  for (const t of INITIAL_TECHNOLOGIES) {
+    const key = canonicalTechKey(t.name);
+    if (key) canonicalLookup.set(key, t.name);
+  }
+
+  if (supabase && isServerSupabaseConfigured) {
+    try {
+      const { data: approved } = await supabase
+        .from('technologies')
+        .select('name')
+        .eq('status', 'approved')
+        .limit(1000);
+      for (const row of approved || []) {
+        const key = canonicalTechKey(row.name);
+        if (key) canonicalLookup.set(key, row.name);
+      }
+    } catch {
+      // keep fallback INITIAL_TECHNOLOGIES lookup
+    }
+  }
+
+  return deduplicateTechStack(techStack, canonicalLookup);
 }
 
 // Helper to safely map application roles to existing Supabase DB enum values
@@ -668,8 +700,12 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    const supabase = getSupabaseServerClient();
+    const normalizedTechStack = await normalizeCandidateTechStack(validated.tech_stack || [], supabase);
+
     const candidateData = {
       ...validated,
+      tech_stack: normalizedTechStack,
       id: candidateId,
       resume_url: resumeStorageKey,
       overlap_hours_per_day: Number(validated.overlap_hours_per_day),
@@ -680,7 +716,6 @@ export async function POST(req: NextRequest) {
       internal_notes: 'Submitted via public application route.',
     };
 
-    const supabase = getSupabaseServerClient();
     if (supabase && isServerSupabaseConfigured) {
       const dbPayload = toDbCandidateData(candidateData);
       let { data, error } = await supabase
@@ -827,8 +862,13 @@ export async function PATCH(req: NextRequest) {
         }
       }
 
+      const normalizedPatchStack = Array.isArray(updates.tech_stack)
+        ? await normalizeCandidateTechStack(updates.tech_stack, supabase)
+        : updates.tech_stack;
+
       const payload: any = {
         ...updates,
+        ...(Array.isArray(updates.tech_stack) ? { tech_stack: normalizedPatchStack } : {}),
         updated_at: new Date().toISOString(),
       };
       if (!isAdmin) {

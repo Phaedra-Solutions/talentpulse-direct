@@ -3,6 +3,7 @@ import {
   getTechnologiesPaginated,
   submitCustomTechnology,
   bulkUpdateTechnologyStatus,
+  bulkDeleteTechnologies,
 } from '@/lib/roles-tech-store';
 import { getAuthenticatedAdmin, requireAdminAuth } from '@/lib/auth/server-auth';
 import { canManageRolesAndTech } from '@/lib/auth/permissions';
@@ -78,6 +79,34 @@ export async function PATCH(req: NextRequest) {
   }
 }
 
+export async function DELETE(req: NextRequest) {
+  try {
+    const auth = requireAdminAuth(req, canManageRolesAndTech);
+    if (auth.errorResponse) return auth.errorResponse;
+
+    const body = await req.json();
+    const { ids, force = false } = body || {};
+
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return NextResponse.json({ success: false, error: 'Technology ids array is required' }, { status: 400 });
+    }
+
+    const result = await bulkDeleteTechnologies(ids, { force: Boolean(force) });
+    try {
+      const { revalidatePath } = await import('next/cache');
+      revalidatePath('/', 'layout');
+    } catch {}
+
+    return NextResponse.json({
+      success: true,
+      deletedCount: result.deletedCount,
+      skippedBlocked: result.skippedBlocked,
+    });
+  } catch (err: any) {
+    return NextResponse.json({ success: false, error: err.message }, { status: 500 });
+  }
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
@@ -92,7 +121,8 @@ export async function POST(req: NextRequest) {
       success: true,
       technology: result.technology,
       isNew: result.isNew,
-    }, { status: 201 });
+      matchedReason: result.matchedReason,
+    }, { status: result.isNew ? 201 : 200 });
   } catch (err: any) {
     return NextResponse.json({ success: false, error: err.message }, { status: 500 });
   }

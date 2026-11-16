@@ -20,7 +20,9 @@ export async function PUT(
     } catch {}
     return NextResponse.json({ success: true, technology: updated });
   } catch (err: any) {
-    return NextResponse.json({ success: false, error: err.message }, { status: 500 });
+    const msg = err?.message || 'Failed to update technology';
+    const isConflict = msg.includes('Duplicate detected:') || msg.includes('already used by');
+    return NextResponse.json({ success: false, error: msg }, { status: isConflict ? 409 : 500 });
   }
 }
 
@@ -33,7 +35,8 @@ export async function DELETE(
     if (auth.errorResponse) return auth.errorResponse;
 
     const { id } = await params;
-    const result = await deleteTechnologyRecord(id);
+    const force = new URL(req.url).searchParams.get('force') === 'true';
+    const result = await deleteTechnologyRecord(id, { force });
     if (!result.success) {
       return NextResponse.json({ success: false, error: result.error }, { status: 400 });
     }
@@ -43,9 +46,11 @@ export async function DELETE(
       revalidatePath('/', 'layout');
     } catch {}
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({
+      success: true,
+      cleanedCandidates: result.cleanedCandidates || 0,
+    });
   } catch (err: any) {
     return NextResponse.json({ success: false, error: err.message }, { status: 500 });
   }
 }
-

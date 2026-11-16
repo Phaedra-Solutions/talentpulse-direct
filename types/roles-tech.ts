@@ -20,6 +20,7 @@ export interface Technology {
   id: string;
   name: string;
   slug: string;
+  canonical_key?: string;
   status: TechnologyStatus;
   is_featured: boolean;
   suggested_by_candidate_id?: string | null;

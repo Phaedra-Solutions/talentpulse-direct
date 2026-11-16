@@ -14,36 +14,74 @@ import {
 } from 'lucide-react';
 import { Navbar } from '@/components/Navbar';
 import { Role } from '@/types/roles-tech';
-import { getRolesList } from '@/lib/roles-tech-store';
+import { getRolesPaginated } from '@/lib/roles-tech-store';
 import { getSeoSettings, FaqItem } from '@/lib/seo-service';
 import { FaqJsonLd } from '@/components/seo/StructuredData';
 
-export function HomePageClient() {
-  const [activeRoles, setActiveRoles] = useState<Role[]>([]);
-  const [futureRoles, setFutureRoles] = useState<Role[]>([]);
-  const [faqs, setFaqs] = useState<FaqItem[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+const HOME_ROLES_PAGE_SIZE = 6;
+
+interface HomePageClientProps {
+  initialActiveRoles?: Role[];
+  initialFutureRoles?: Role[];
+  initialFaqs?: FaqItem[];
+}
+
+export function HomePageClient({
+  initialActiveRoles,
+  initialFutureRoles,
+  initialFaqs,
+}: HomePageClientProps = {}) {
+  const hasInitialData =
+    Array.isArray(initialActiveRoles) &&
+    (initialActiveRoles.length > 0 || (initialFutureRoles?.length || 0) > 0);
+
+  const [activeRoles, setActiveRoles] = useState<Role[]>(initialActiveRoles || []);
+  const [futureRoles, setFutureRoles] = useState<Role[]>(initialFutureRoles || []);
+  const [faqs, setFaqs] = useState<FaqItem[]>(initialFaqs || []);
+  const [isLoading, setIsLoading] = useState(!hasInitialData);
+  const [activePage, setActivePage] = useState(1);
+  const [futurePage, setFuturePage] = useState(1);
 
   useEffect(() => {
+    if (hasInitialData) return;
+    let cancelled = false;
     async function loadData() {
       try {
-        const [allRoles, seo] = await Promise.all([
-          getRolesList(true),
+        const [rolesResult, seo] = await Promise.all([
+          getRolesPaginated({ includeClosed: true, summary: true, limit: 100 }),
           getSeoSettings(),
         ]);
-        setActiveRoles(allRoles.filter(r => r.status === 'open'));
-        setFutureRoles(allRoles.filter(r => r.status === 'closed'));
+        if (cancelled) return;
+        setActiveRoles(rolesResult.roles.filter((r) => r.status === 'open'));
+        setFutureRoles(rolesResult.roles.filter((r) => r.status === 'closed'));
         if (seo && Array.isArray(seo.faq_items)) {
-          setFaqs(seo.faq_items.filter(f => f.is_active));
+          setFaqs(seo.faq_items.filter((f) => f.is_active));
         }
       } catch (err) {
         console.error('Failed to load overview data', err);
       } finally {
-        setIsLoading(false);
+        if (!cancelled) setIsLoading(false);
       }
     }
     loadData();
-  }, []);
+    return () => {
+      cancelled = true;
+    };
+  }, [hasInitialData]);
+
+  const activeTotalPages = Math.max(1, Math.ceil(activeRoles.length / HOME_ROLES_PAGE_SIZE));
+  const safeActivePage = Math.min(activePage, activeTotalPages);
+  const pagedActiveRoles = activeRoles.slice(
+    (safeActivePage - 1) * HOME_ROLES_PAGE_SIZE,
+    safeActivePage * HOME_ROLES_PAGE_SIZE
+  );
+
+  const futureTotalPages = Math.max(1, Math.ceil(futureRoles.length / HOME_ROLES_PAGE_SIZE));
+  const safeFuturePage = Math.min(futurePage, futureTotalPages);
+  const pagedFutureRoles = futureRoles.slice(
+    (safeFuturePage - 1) * HOME_ROLES_PAGE_SIZE,
+    safeFuturePage * HOME_ROLES_PAGE_SIZE
+  );
 
   return (
     <div className="min-h-screen bg-[#F8F7F4] text-[#111113] flex flex-col font-sans selection:bg-[#FF4D00] selection:text-white">
@@ -136,51 +174,86 @@ export function HomePageClient() {
             </p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-px bg-[#111113] border-2 border-[#111113]">
-            {activeRoles.map((role, idx) => {
-              const coreTechs = (role.technologies || [])
-                .filter(t => t.is_featured)
-                .slice(0, 5)
-                .map(t => t.name);
+          {isLoading ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-px bg-[#111113] border-2 border-[#111113]">
+              {Array.from({ length: 6 }).map((_, idx) => (
+                <div key={idx} className="bg-[#F8F7F4] p-6 sm:p-8 h-56 animate-pulse" />
+              ))}
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-px bg-[#111113] border-2 border-[#111113]">
+              {pagedActiveRoles.map((role, idx) => {
+                const trackNum = (safeActivePage - 1) * HOME_ROLES_PAGE_SIZE + idx + 1;
+                const coreTechs = (role.technologies || [])
+                  .filter(t => t.is_featured)
+                  .slice(0, 5)
+                  .map(t => t.name);
 
-              const displayTechs = coreTechs.length > 0
-                ? coreTechs.join(' • ')
-                : (role.technologies || []).slice(0, 4).map(t => t.name).join(' • ');
+                const displayTechs = coreTechs.length > 0
+                  ? coreTechs.join(' • ')
+                  : (role.technologies || []).slice(0, 4).map(t => t.name).join(' • ');
 
-              return (
-                <Link
-                  key={role.id}
-                  href={`/roles/${role.slug}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="bg-[#F8F7F4] p-6 sm:p-8 flex flex-col justify-between group hover:bg-white transition-all relative cursor-pointer"
-                >
-                  <div>
-                    <div className="flex items-center justify-between mb-4 font-mono text-xs uppercase tracking-widest font-bold">
-                      <span className="text-[#FF4D00]">[0{idx + 1}]</span>
-                      <span className="text-[#111113]/60 group-hover:text-[#FF4D00] transition-colors flex items-center gap-1 text-[11px]">
-                        <span>Specification</span>
-                        <ExternalLink className="w-3.5 h-3.5" />
-                      </span>
+                return (
+                  <Link
+                    key={role.id}
+                    href={`/roles/${role.slug}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="bg-[#F8F7F4] p-6 sm:p-8 flex flex-col justify-between group hover:bg-white transition-all relative cursor-pointer"
+                  >
+                    <div>
+                      <div className="flex items-center justify-between mb-4 font-mono text-xs uppercase tracking-widest font-bold">
+                        <span className="text-[#FF4D00]">[{String(trackNum).padStart(2, '0')}]</span>
+                        <span className="text-[#111113]/60 group-hover:text-[#FF4D00] transition-colors flex items-center gap-1 text-[11px]">
+                          <span>Specification</span>
+                          <ExternalLink className="w-3.5 h-3.5" />
+                        </span>
+                      </div>
+
+                      <h3 className="font-syne font-bold text-2xl text-[#111113] mb-3 group-hover:text-[#FF4D00] transition-colors">
+                        {role.title}
+                      </h3>
+
+                      <p className="text-sm text-[#111113]/80 leading-relaxed font-sans mb-6">
+                        {role.short_description}
+                      </p>
                     </div>
 
-                    <h3 className="font-syne font-bold text-2xl text-[#111113] mb-3 group-hover:text-[#FF4D00] transition-colors">
-                      {role.title}
-                    </h3>
+                    <div className="border-t border-[#111113]/20 pt-4 font-mono text-[11px] text-[#111113]/60 uppercase flex items-center justify-between">
+                      <span className="truncate pr-2">{displayTechs || 'Multi-stack verified'}</span>
+                      <ArrowRight className="w-3.5 h-3.5 shrink-0 text-[#111113]/40 group-hover:text-[#FF4D00] group-hover:translate-x-1 transition-all" />
+                    </div>
+                  </Link>
+                );
+              })}
+            </div>
+          )}
 
-                    <p className="text-sm text-[#111113]/80 leading-relaxed font-sans mb-6">
-                      {role.short_description}
-                    </p>
-                  </div>
-
-                  <div className="border-t border-[#111113]/20 pt-4 font-mono text-[11px] text-[#111113]/60 uppercase flex items-center justify-between">
-                    <span className="truncate pr-2">{displayTechs || 'Multi-stack verified'}</span>
-                    <ArrowRight className="w-3.5 h-3.5 shrink-0 text-[#111113]/40 group-hover:text-[#FF4D00] group-hover:translate-x-1 transition-all" />
-                  </div>
-                </Link>
-              );
-            })}
-          </div>
+          {activeTotalPages > 1 && (
+            <div className="mt-6 flex items-center justify-between font-mono text-xs">
+              <span className="text-[#111113]/70">
+                Track Page {safeActivePage} of {activeTotalPages} ({activeRoles.length} active tracks)
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  disabled={safeActivePage <= 1}
+                  onClick={() => setActivePage((p) => Math.max(1, p - 1))}
+                  className="px-3 py-1.5 border-2 border-[#111113] bg-white font-bold uppercase hover:bg-[#111113] hover:text-white transition disabled:opacity-30"
+                >
+                  ← Prev
+                </button>
+                <button
+                  type="button"
+                  disabled={safeActivePage >= activeTotalPages}
+                  onClick={() => setActivePage((p) => Math.min(activeTotalPages, p + 1))}
+                  className="px-3 py-1.5 border-2 border-[#111113] bg-white font-bold uppercase hover:bg-[#111113] hover:text-white transition disabled:opacity-30"
+                >
+                  Next →
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </section>
 
@@ -204,7 +277,7 @@ export function HomePageClient() {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-px bg-[#111113] border-2 border-[#111113]">
-              {futureRoles.map((role) => {
+              {pagedFutureRoles.map((role) => {
                 const coreTechs = (role.technologies || [])
                   .slice(0, 4)
                   .map(t => t.name)
@@ -246,6 +319,32 @@ export function HomePageClient() {
                 );
               })}
             </div>
+
+            {futureTotalPages > 1 && (
+              <div className="mt-6 flex items-center justify-between font-mono text-xs">
+                <span className="text-[#111113]/70">
+                  Page {safeFuturePage} of {futureTotalPages} ({futureRoles.length} upcoming tracks)
+                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    disabled={safeFuturePage <= 1}
+                    onClick={() => setFuturePage((p) => Math.max(1, p - 1))}
+                    className="px-3 py-1.5 border-2 border-[#111113] bg-white font-bold uppercase hover:bg-[#111113] hover:text-white transition disabled:opacity-30"
+                  >
+                    ← Prev
+                  </button>
+                  <button
+                    type="button"
+                    disabled={safeFuturePage >= futureTotalPages}
+                    onClick={() => setFuturePage((p) => Math.min(futureTotalPages, p + 1))}
+                    className="px-3 py-1.5 border-2 border-[#111113] bg-white font-bold uppercase hover:bg-[#111113] hover:text-white transition disabled:opacity-30"
+                  >
+                    Next →
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </section>
       )}

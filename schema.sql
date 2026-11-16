@@ -383,21 +383,36 @@ CREATE TABLE IF NOT EXISTS public.roles (
 
 CREATE INDEX IF NOT EXISTS idx_roles_slug ON public.roles(slug);
 CREATE INDEX IF NOT EXISTS idx_roles_status ON public.roles(status);
+CREATE INDEX IF NOT EXISTS idx_roles_display_order ON public.roles(display_order ASC);
 
 CREATE TABLE IF NOT EXISTS public.technologies (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL UNIQUE,
     slug TEXT NOT NULL UNIQUE,
+    canonical_key TEXT,
     status TEXT NOT NULL DEFAULT 'approved',
     is_featured BOOLEAN NOT NULL DEFAULT false,
     created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
 );
 
+ALTER TABLE public.technologies ADD COLUMN IF NOT EXISTS canonical_key TEXT;
+UPDATE public.technologies
+SET canonical_key = regexp_replace(
+  lower(replace(replace(name, '++', 'plusplus'), '#', 'sharp')),
+  '[^a-z0-9]',
+  '',
+  'g'
+)
+WHERE canonical_key IS NULL;
+
 CREATE INDEX IF NOT EXISTS idx_technologies_slug ON public.technologies(slug);
 CREATE INDEX IF NOT EXISTS idx_technologies_status ON public.technologies(status);
 CREATE INDEX IF NOT EXISTS idx_technologies_status_created_at ON public.technologies(status, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_technologies_name ON public.technologies(name);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_technologies_canonical_key
+  ON public.technologies(canonical_key)
+  WHERE canonical_key IS NOT NULL AND canonical_key <> '';
 
 CREATE TABLE IF NOT EXISTS public.role_technologies (
     role_id TEXT NOT NULL REFERENCES public.roles(id) ON DELETE CASCADE,

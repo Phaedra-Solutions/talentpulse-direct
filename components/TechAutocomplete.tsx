@@ -1,8 +1,9 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Search, Plus, Check, Sparkles, AlertCircle } from 'lucide-react';
+import { Search, Plus, Sparkles } from 'lucide-react';
 import { Technology } from '@/types/roles-tech';
+import { canonicalTechKey, findBestMatchingTechnology } from '@/lib/tech-normalization';
 
 interface TechAutocompleteProps {
   roleSlugOrId: string;
@@ -12,58 +13,87 @@ interface TechAutocompleteProps {
 }
 
 export function TechAutocomplete({
-  roleSlugOrId,
+  roleSlugOrId: _roleSlugOrId,
   selectedTechs,
   onSelectTech,
   availableRoleTechs = [],
 }: TechAutocompleteProps) {
   const [query, setQuery] = useState('');
   const [isOpen, setIsOpen] = useState(false);
-  const [allSystemTechs, setAllSystemTechs] = useState<Technology[]>([]);
+  const [remoteTechs, setRemoteTechs] = useState<Technology[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Load system technologies once for instant client-side matching
+  // Debounced server-side query (replaces stale mount limit=50 fetch)
   useEffect(() => {
-    let isMounted = true;
-    async function loadAllTechs() {
+    const trimmed = query.trim();
+    if (trimmed.length < 2) {
+      return;
+    }
+
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      setIsSearching(true);
       try {
-        const res = await fetch('/api/technologies?status=approved');
+        const params = new URLSearchParams({
+          status: 'approved',
+          query: trimmed,
+          limit: '15',
+          page: '1',
+        });
+        const res = await fetch(`/api/technologies?${params.toString()}`);
         const data = await res.json();
-        if (isMounted && data.success && Array.isArray(data.technologies)) {
-          setAllSystemTechs(data.technologies);
+        if (!cancelled && data.success && Array.isArray(data.technologies)) {
+          setRemoteTechs(data.technologies);
         }
       } catch {
-        // fallback
+        // Silent fallback to local availableRoleTechs pool
+      } finally {
+        if (!cancelled) setIsSearching(false);
       }
-    }
-    loadAllTechs();
-    return () => {
-      isMounted = false;
-    };
-  }, []);
+    }, 200);
 
-  // Filter suggestions when query changes (only after writing at least 2 characters)
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [query]);
+
+  // Combined pool of role techs + remote search hits
+  const combinedPool = useMemo(() => {
+    const activeRemote = query.trim().length >= 2 ? remoteTechs : [];
+    const pool = [...availableRoleTechs, ...activeRemote];
+    return Array.from(new Map(pool.map((item) => [item.id, item])).values());
+  }, [availableRoleTechs, remoteTechs, query]);
+
+  // Filter & rank suggestions (includes canonical alias matching so typing "NextJS" suggests "Next.js")
   const suggestions = useMemo(() => {
     const trimmed = query.trim();
     if (trimmed.length < 2) return [];
 
     const lowerQuery = trimmed.toLowerCase();
-    const normalizedSelected = selectedTechs.map(t => t.toLowerCase().trim());
+    const queryCanon = canonicalTechKey(trimmed);
+    const selectedCanonKeys = new Set(
+      selectedTechs.map((t) => canonicalTechKey(t) || t.toLowerCase().trim())
+    );
 
-    // Pool of candidates: prioritize availableRoleTechs first, then allSystemTechs
-    const pool = [...availableRoleTechs, ...allSystemTechs];
-    const uniquePool = Array.from(new Map(pool.map(item => [item.id, item])).values());
+    const matched = combinedPool.filter((tech) => {
+      const techCanon = canonicalTechKey(tech.name) || tech.name.toLowerCase().trim();
+      if (selectedCanonKeys.has(techCanon)) return false;
 
-    const matched = uniquePool.filter(tech => {
-      // Must not already be selected
-      if (normalizedSelected.includes(tech.name.toLowerCase().trim())) {
-        return false;
-      }
-      return tech.name.toLowerCase().includes(lowerQuery);
+      const lowerName = tech.name.toLowerCase();
+      return (
+        lowerName.includes(lowerQuery) ||
+        (queryCanon.length >= 2 && techCanon.includes(queryCanon))
+      );
     });
 
-    // Sort: exact startsWith first, then alphabetical
     matched.sort((a, b) => {
+      const aCanonExact = canonicalTechKey(a.name) === queryCanon;
+      const bCanonExact = canonicalTechKey(b.name) === queryCanon;
+      if (aCanonExact && !bCanonExact) return -1;
+      if (!aCanonExact && bCanonExact) return 1;
+
       const aStarts = a.name.toLowerCase().startsWith(lowerQuery);
       const bStarts = b.name.toLowerCase().startsWith(lowerQuery);
       if (aStarts && !bStarts) return -1;
@@ -71,8 +101,15 @@ export function TechAutocomplete({
       return a.name.localeCompare(b.name);
     });
 
-    return matched.slice(0, 8);
-  }, [query, selectedTechs, availableRoleTechs, allSystemTechs]);
+    return matched.slice(0, 10);
+  }, [query, selectedTechs, combinedPool]);
+
+  // Detect if typed input maps canonically to an existing system skill before submitting custom
+  const canonicalDuplicateMatch = useMemo(() => {
+    const trimmed = query.trim();
+    if (trimmed.length < 2) return null;
+    return findBestMatchingTechnology(trimmed, combinedPool, { allowFuzzy: true });
+  }, [query, combinedPool]);
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -85,8 +122,17 @@ export function TechAutocomplete({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  const isAlreadySelected = (name: string) => {
+    const candidateCanon = canonicalTechKey(name) || name.toLowerCase().trim();
+    return selectedTechs.some(
+      (t) => (canonicalTechKey(t) || t.toLowerCase().trim()) === candidateCanon
+    );
+  };
+
   const handleSelectSuggestion = (techName: string) => {
-    onSelectTech(techName, false);
+    if (!isAlreadySelected(techName)) {
+      onSelectTech(techName, false);
+    }
     setQuery('');
     setIsOpen(false);
   };
@@ -95,23 +141,17 @@ export function TechAutocomplete({
     const trimmed = query.trim();
     if (trimmed.length < 2) return;
 
-    // Check if already selected (case-insensitive deduplication)
-    const alreadySelected = selectedTechs.some(
-      t => t.toLowerCase().trim() === trimmed.toLowerCase()
-    );
-    if (alreadySelected) {
+    if (isAlreadySelected(trimmed)) {
       setQuery('');
       setIsOpen(false);
       return;
     }
 
-    // Check if it matches an existing system tech exactly
-    const exactMatch = allSystemTechs.find(
-      t => t.name.toLowerCase().trim() === trimmed.toLowerCase()
-    );
-
-    if (exactMatch) {
-      onSelectTech(exactMatch.name, false);
+    if (canonicalDuplicateMatch) {
+      const matchedName = canonicalDuplicateMatch.match.name;
+      if (!isAlreadySelected(matchedName)) {
+        onSelectTech(matchedName, false);
+      }
     } else {
       onSelectTech(trimmed, true);
     }
@@ -123,7 +163,9 @@ export function TechAutocomplete({
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
       e.preventDefault();
-      if (suggestions.length > 0) {
+      if (canonicalDuplicateMatch) {
+        handleSelectSuggestion(canonicalDuplicateMatch.match.name);
+      } else if (suggestions.length > 0) {
         handleSelectSuggestion(suggestions[0].name);
       } else {
         handleAddCustom();
@@ -133,13 +175,8 @@ export function TechAutocomplete({
     }
   };
 
-  const isAlreadySelected = (name: string) =>
-    selectedTechs.some(t => t.toLowerCase().trim() === name.toLowerCase().trim());
-
   const trimmedQuery = query.trim();
-  const hasExactMatch = suggestions.some(
-    s => s.name.toLowerCase().trim() === trimmedQuery.toLowerCase()
-  );
+  const hasCanonicalMatch = Boolean(canonicalDuplicateMatch);
 
   return (
     <div ref={containerRef} className="relative w-full">
@@ -173,7 +210,7 @@ export function TechAutocomplete({
           }`}
         >
           <Plus className="w-3.5 h-3.5" />
-          <span>Add Custom</span>
+          <span>{hasCanonicalMatch ? 'Select Match' : 'Add Custom'}</span>
         </button>
       </div>
 
@@ -182,7 +219,7 @@ export function TechAutocomplete({
         <div className="absolute left-0 right-0 top-full mt-1 z-30 bg-white border-2 border-[#111113] shadow-[4px_4px_0px_0px_#111113] max-h-64 overflow-y-auto">
           <div className="p-2 bg-[#F8F7F4] border-b border-[#111113]/20 flex items-center justify-between font-mono text-[10px] text-[#111113]/60 uppercase">
             <span>System Suggestions (Press Enter to select)</span>
-            <span>{suggestions.length} found</span>
+            <span>{isSearching ? 'Searching...' : `${suggestions.length} found`}</span>
           </div>
 
           {suggestions.length > 0 ? (
@@ -213,12 +250,12 @@ export function TechAutocomplete({
             </div>
           ) : (
             <div className="p-3 text-center font-mono text-xs text-[#111113]/60">
-              No matching existing technologies found.
+              {isSearching ? 'Searching approved library...' : 'No matching existing technologies found.'}
             </div>
           )}
 
-          {/* Prompt to add genuinely custom if not exact match */}
-          {!hasExactMatch && trimmedQuery.length >= 2 && (
+          {/* Prompt to add genuinely custom if no exact or canonical alias match exists */}
+          {!hasCanonicalMatch && trimmedQuery.length >= 2 && (
             <div className="p-2 bg-[#F8F7F4] border-t border-[#111113]/20">
               <button
                 type="button"
