@@ -52,6 +52,11 @@ function ApplyFormContent() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submissionSuccess, setSubmissionSuccess] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [isCheckingDuplicate, setIsCheckingDuplicate] = useState(false);
+  const [duplicateMatch, setDuplicateMatch] = useState<{
+    matchedBy: 'email' | 'phone' | 'both';
+    email?: string;
+  } | null>(null);
 
   // Dynamic Roles & Technologies State
   const [availableRoles, setAvailableRoles] = useState<Role[]>([]);
@@ -161,12 +166,79 @@ function ApplyFormContent() {
     setValue('resume_filename', '', { shouldValidate: true });
   };
 
+  // Check if entered email or phone already exists in candidates table (without leaking PII)
+  const checkDuplicateIdentity = async (
+    payload: { email?: string; phone_number?: string },
+    strict = false
+  ): Promise<boolean> => {
+    const cleanEmail = (payload.email || '').trim();
+    const cleanPhone = (payload.phone_number || '').trim();
+    if (!cleanEmail && !cleanPhone) return false;
+
+    if (strict) setIsCheckingDuplicate(true);
+    try {
+      const res = await fetch('/api/candidates/check-exists', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: cleanEmail,
+          phone_number: cleanPhone,
+        }),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        if (strict) {
+          setSubmitError(
+            data?.error || 'Unable to verify your email and phone number right now. Please try again.'
+          );
+        }
+        return strict;
+      }
+
+      if (data.exists) {
+        setDuplicateMatch({
+          matchedBy: data.matchedBy || 'email',
+          email: cleanEmail || undefined,
+        });
+        setSubmitError(null);
+        return true;
+      }
+
+      setDuplicateMatch(null);
+      return false;
+    } catch {
+      if (strict) {
+        setSubmitError(
+          'Network error while verifying your email and phone number. Please check your connection and try again.'
+        );
+      }
+      return strict;
+    } finally {
+      if (strict) setIsCheckingDuplicate(false);
+    }
+  };
+
   // Step validation
   const handleNextStep = async () => {
     let isValid = false;
 
     if (currentStep === 1) {
+      if (isCheckingDuplicate) return;
       isValid = await trigger(['full_name', 'email', 'phone_number', 'resume_url']);
+      if (!isValid) return;
+
+      const hasConflict = await checkDuplicateIdentity(
+        { email: formValues.email, phone_number: formValues.phone_number },
+        true
+      );
+      if (hasConflict) {
+        window.scrollTo({ top: 120, behavior: 'smooth' });
+        return;
+      }
+      setCurrentStep(2);
+      window.scrollTo({ top: 120, behavior: 'smooth' });
+      return;
     } else if (currentStep === 2) {
       isValid = await trigger(['primary_role', 'work_modes', 'contractual_agreement_accepted']);
     } else if (currentStep === 3) {
@@ -185,6 +257,8 @@ function ApplyFormContent() {
     setCurrentStep((prev) => Math.max(prev - 1, 1));
     window.scrollTo({ top: 120, behavior: 'smooth' });
   };
+
+  const emailRegister = register('email');
 
   const toggleTech = (tech: string) => {
     let updated: string[];
@@ -221,6 +295,10 @@ function ApplyFormContent() {
   };
 
   const onSubmit = async (data: CandidateApplicationFormValues) => {
+    if (currentStep < 5 || duplicateMatch) {
+      return;
+    }
+
     setIsSubmitting(true);
     setSubmitError(null);
 
@@ -247,6 +325,13 @@ function ApplyFormContent() {
       const res = await createCandidateRecord(data);
       if (res.success) {
         setSubmissionSuccess(true);
+      } else if (res.code === 'CANDIDATE_ALREADY_EXISTS') {
+        setDuplicateMatch({
+          matchedBy: res.matchedBy || 'email',
+          email: data.email,
+        });
+        setCurrentStep(1);
+        window.scrollTo({ top: 120, behavior: 'smooth' });
       } else {
         setSubmitError(res.error || 'Failed to submit application. Please review fields.');
       }
@@ -363,7 +448,19 @@ function ApplyFormContent() {
               </div>
             )}
 
-            <form onSubmit={handleSubmit(onSubmit)} className="p-6 sm:p-8 space-y-6">
+            <form
+              onSubmit={handleSubmit(onSubmit)}
+              onKeyDown={(e) => {
+                if (
+                  e.key === 'Enter' &&
+                  (e.target as HTMLElement)?.tagName !== 'TEXTAREA' &&
+                  currentStep < 5
+                ) {
+                  e.preventDefault();
+                }
+              }}
+              className="p-6 sm:p-8 space-y-6"
+            >
               {/* ================= STEP 1: Personal Info & Portfolio & Phone & Resume ================= */}
               {currentStep === 1 && (
                 <div className="space-y-5 animate-in fade-in duration-200">
@@ -376,6 +473,48 @@ function ApplyFormContent() {
                       Phone number and Resume/CV are mandatory requirements for contract assignment.
                     </p>
                   </div>
+
+                  {/* Friendly Existing Profile Notice with /candidate/update CTA */}
+                  {duplicateMatch && (
+                    <div
+                      role="alert"
+                      className="p-5 border-2 border-[#111113] bg-[#FFF4EE] shadow-[4px_4px_0px_0px_#111113] space-y-3"
+                    >
+                      <div className="flex items-start gap-3">
+                        <ShieldCheck className="w-5 h-5 text-[#FF4D00] shrink-0 mt-0.5" />
+                        <div className="space-y-1.5">
+                          <h3 className="font-syne font-extrabold text-sm sm:text-base text-[#111113]">
+                            You&apos;re Already Registered in TalentPulse
+                          </h3>
+                          <p className="font-mono text-xs text-[#111113]/85 leading-relaxed">
+                            {duplicateMatch.matchedBy === 'both'
+                              ? 'We found an existing candidate profile matching both the email address and phone number you entered.'
+                              : duplicateMatch.matchedBy === 'phone'
+                              ? 'We found an existing candidate profile matching the phone number you entered.'
+                              : 'We found an existing candidate profile matching the email address you entered.'}{' '}
+                            To protect your account security and ensure no one else can alter your profile using just an email or phone number, updates can only be made through our verified Candidate Self-Service Portal.
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="pl-8 flex flex-wrap items-center gap-3 pt-1">
+                        <Link
+                          href={
+                            duplicateMatch.email && duplicateMatch.matchedBy !== 'phone'
+                              ? `/candidate/update?email=${encodeURIComponent(duplicateMatch.email)}`
+                              : '/candidate/update'
+                          }
+                          className="btn-brutalist btn-brutalist-primary text-xs py-2.5 px-5 inline-flex items-center gap-2"
+                        >
+                          <span>Go to Candidate Update Portal</span>
+                          <ArrowRight className="w-4 h-4" />
+                        </Link>
+                        <span className="font-mono text-[11px] text-[#111113]/65">
+                          Or update your email/phone above if you entered it by mistake.
+                        </span>
+                      </div>
+                    </div>
+                  )}
 
                   {/* Name */}
                   <div>
@@ -401,9 +540,28 @@ function ApplyFormContent() {
                       </label>
                       <input
                         type="email"
-                        {...register('email')}
+                        {...emailRegister}
+                        onChange={(e) => {
+                          if (duplicateMatch) setDuplicateMatch(null);
+                          if (submitError) setSubmitError(null);
+                          emailRegister.onChange(e);
+                        }}
+                        onBlur={(e) => {
+                          emailRegister.onBlur(e);
+                          const val = e.target.value.trim();
+                          if (val && val.includes('@')) {
+                            void checkDuplicateIdentity({
+                              email: val,
+                              phone_number: formValues.phone_number,
+                            });
+                          }
+                        }}
                         placeholder="alex@domain.com"
-                        className="w-full font-mono text-xs px-3.5 py-2.5 border-2 border-[#111113] bg-[#F8F7F4] text-[#111113] placeholder:text-[#111113]/40 focus:outline-hidden focus:border-[#FF4D00]"
+                        className={`w-full font-mono text-xs px-3.5 py-2.5 border-2 bg-[#F8F7F4] text-[#111113] placeholder:text-[#111113]/40 focus:outline-hidden focus:border-[#FF4D00] ${
+                          duplicateMatch && (duplicateMatch.matchedBy === 'email' || duplicateMatch.matchedBy === 'both')
+                            ? 'border-[#FF4D00]'
+                            : 'border-[#111113]'
+                        }`}
                       />
                       {errors.email && (
                         <p className="font-mono text-xs text-[#FF4D00] mt-1">{errors.email.message}</p>
@@ -418,9 +576,19 @@ function ApplyFormContent() {
                           <PhoneInputWithCountry
                             value={field.value}
                             onChange={(formatted) => {
+                              if (duplicateMatch) setDuplicateMatch(null);
+                              if (submitError) setSubmitError(null);
                               field.onChange(formatted);
                             }}
-                            onBlur={field.onBlur}
+                            onBlur={() => {
+                              field.onBlur();
+                              if (formValues.phone_number && formValues.phone_number.replace(/\D/g, '').length >= 7) {
+                                void checkDuplicateIdentity({
+                                  email: formValues.email,
+                                  phone_number: formValues.phone_number,
+                                });
+                              }
+                            }}
                             label="Phone Number (with Country Code & Flag)"
                             required
                             defaultCountry="US"
@@ -1053,9 +1221,16 @@ function ApplyFormContent() {
                   <button
                     type="button"
                     onClick={handleNextStep}
-                    className="btn-brutalist btn-brutalist-primary text-xs py-3 sm:py-2.5 px-6 sm:ml-auto min-h-[44px] justify-center"
+                    disabled={isCheckingDuplicate || (currentStep === 1 && Boolean(duplicateMatch))}
+                    className="btn-brutalist btn-brutalist-primary text-xs py-3 sm:py-2.5 px-6 sm:ml-auto min-h-[44px] justify-center disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    <span>Proceed to Step {currentStep + 1}</span>
+                    <span>
+                      {isCheckingDuplicate
+                        ? 'Verifying Profile...'
+                        : currentStep === 1 && duplicateMatch
+                        ? 'Profile Exists — Use Update Portal'
+                        : `Proceed to Step ${currentStep + 1}`}
+                    </span>
                     <ArrowRight className="w-4 h-4" />
                   </button>
                 ) : (

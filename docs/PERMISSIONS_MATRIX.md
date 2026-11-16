@@ -70,7 +70,8 @@ Server-side route handlers enforce `requireAdminAuth(req, permissionCheck)` from
 | Endpoint Route | HTTP Method | Permission Helper / Rule | Unauthenticated | Unauthorized Role | Authorized Success |
 | :--- | :---: | :--- | :---: | :---: | :---: |
 | `/api/candidates` | `GET` | Public PII-Redacted / Verified Candidate Own Record *(Bearer JWT)* / Admin Full | `200` *(Redacted)* | N/A | `200` *(Own Record / Full PII)* |
-| `/api/candidates` | `POST` | Public Intake Application *(DO Spaces required for resumes; `503 DO_SPACES_NOT_CONFIGURED` if unconfigured)* | `201 Created` | N/A | `201 Created` |
+| `/api/candidates` | `POST` | Public Intake Application *(blocks existing email/phone with `409`; DO Spaces required)* | `201 Created` | N/A | `201 Created` |
+| `/api/candidates/check-exists` | `POST` | Public Step 1 Uniqueness Check *(returns `{ exists, matchedBy }` only; zero PII)* | `200 OK` | N/A | `200 OK` |
 | `/api/candidates` | `PATCH` | `canAccessCandidatePipeline` or Verified Supabase Candidate Email JWT | `401 Unauthorized` | `403 Forbidden` | `200 OK` |
 | `/api/candidates/[id]` | `GET` / `PATCH` | `canAccessCandidatePipeline` | `401 Unauthorized` | `403 Forbidden` | `200 OK` |
 | `/api/candidates/resume` | `GET` | Admin Session, Candidate Owner Email, Query Token, or Internal Referer | `403 Forbidden` | `403 Forbidden` | `200 OK` *(`no-store` stream)* |

@@ -64,6 +64,8 @@ Unlike traditional applicant tracking systems (ATS), TalentPulse operates on an 
     *   **Dual Affirmative Legal Consent**: Separate explicit checkboxes for Commercial Terms of Use (`terms_accepted`) and Global Privacy Policy (`privacy_accepted`), alongside contractual-only agreement confirmation (`contractual_agreement_accepted`).
 *   **2.2 Atomic Cloud Resume Persistence (`POST /api/candidates`)**:
     *   Uploaded resumes are stored immediately in DigitalOcean Spaces (`ACL: private`) under `Talent Pulse/{Month-Year}/candidate/{candidateId}_{filename}` and persisted in PostgreSQL as the canonical object key (failing cleanly with HTTP `502` rather than writing raw base64 payloads into the database if upload fails).
+*   **2.3 Step 1 Duplicate Profile Protection (`POST /api/candidates/check-exists`)**:
+    *   At Step 1, normalized email and international phone checks verify uniqueness without exposing any stored PII. If either matches an existing candidate, progression past Step 1 and server submission (`409 CANDIDATE_ALREADY_EXISTS`) are blocked, and the applicant is presented with a direct CTA to `/candidate/update` for OTP-verified profile updates.
 
 ---
 

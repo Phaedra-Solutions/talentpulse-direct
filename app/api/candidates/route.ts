@@ -11,6 +11,10 @@ import {
 } from '@/lib/storage/do-spaces';
 import { canonicalTechKey, deduplicateTechStack } from '@/lib/tech-normalization';
 import { INITIAL_TECHNOLOGIES } from '@/lib/roles-tech-store';
+import {
+  findExistingCandidateMatch,
+  normalizeCandidateEmail,
+} from '@/lib/candidate-duplicate';
 
 function parseBase64FileData(dataUri: string): { buffer: Buffer; mimeType: string } | null {
   if (!dataUri || typeof dataUri !== 'string' || !dataUri.startsWith('data:')) return null;
@@ -674,6 +678,38 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const validated = candidateApplicationSchema.parse(body);
+    const normalizedEmail = normalizeCandidateEmail(validated.email);
+    const supabase = getSupabaseServerClient();
+    const activeSupabase = isServerSupabaseConfigured ? supabase : null;
+
+    // Security Guard: Block any duplicate email OR phone BEFORE resume upload or DB insert
+    const existingMatch = await findExistingCandidateMatch(
+      activeSupabase,
+      {
+        email: normalizedEmail,
+        phone_number: validated.phone_number,
+      },
+      INITIAL_MOCK_CANDIDATES
+    );
+
+    if (existingMatch.exists) {
+      const conflictTarget =
+        existingMatch.matchedBy === 'both'
+          ? 'email address and phone number'
+          : existingMatch.matchedBy === 'phone'
+          ? 'phone number'
+          : 'email address';
+
+      return NextResponse.json(
+        {
+          error: `A candidate profile with this ${conflictTarget} already exists. Please use the Candidate Self-Service Portal (/candidate/update) to update your profile.`,
+          code: 'CANDIDATE_ALREADY_EXISTS',
+          matchedBy: existingMatch.matchedBy,
+        },
+        { status: 409 }
+      );
+    }
+
     const candidateId = crypto.randomUUID();
 
     let resumeStorageKey = validated.resume_url;
@@ -700,11 +736,11 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const supabase = getSupabaseServerClient();
     const normalizedTechStack = await normalizeCandidateTechStack(validated.tech_stack || [], supabase);
 
     const candidateData = {
       ...validated,
+      email: normalizedEmail,
       tech_stack: normalizedTechStack,
       id: candidateId,
       resume_url: resumeStorageKey,

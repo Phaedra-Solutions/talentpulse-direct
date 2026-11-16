@@ -1,6 +1,11 @@
 import { Candidate, CandidateApplicationFormValues, CandidateFilters, CandidateUpdateFormValues, PipelineStage } from '@/types/candidate';
 import { INITIAL_MOCK_CANDIDATES } from './mock-data';
 import { getSupabaseBrowserClient, isSupabaseConfigured } from './supabase/client';
+import {
+  normalizeCandidateEmail,
+  phonesMatch,
+  DuplicateMatchField,
+} from './candidate-duplicate';
 
 const STORAGE_KEY = 'talentpulse_candidates_v2';
 const OLD_STORAGE_KEY = 'talentpulse_candidates_v1';
@@ -287,6 +292,8 @@ export async function createCandidateRecord(values: CandidateApplicationFormValu
   success: boolean;
   candidate?: Candidate;
   error?: string;
+  code?: string;
+  matchedBy?: DuplicateMatchField | null;
   isLiveSupabase: boolean;
 }> {
   try {
@@ -306,19 +313,43 @@ export async function createCandidateRecord(values: CandidateApplicationFormValu
     }
 
     if (!res.ok) {
-      return { success: false, error: data.error || 'Failed to submit candidate application.', isLiveSupabase: false };
+      return {
+        success: false,
+        error: data.error || 'Failed to submit candidate application.',
+        code: data.code,
+        matchedBy: data.matchedBy || null,
+        isLiveSupabase: false,
+      };
     }
   } catch (err: any) {
     console.warn('API submit failed, falling back to local storage:', err);
   }
 
-  // Fallback to local storage
+  // Fallback to local storage (reject duplicates instead of overwriting existing records)
+  const normalizedEmail = normalizeCandidateEmail(values.email);
+  const locals = getLocalCandidates();
+  const emailMatch = locals.some((c) => normalizeCandidateEmail(c.email) === normalizedEmail);
+  const phoneMatch = locals.some((c) => phonesMatch(c.phone_number, values.phone_number));
+
+  if (emailMatch || phoneMatch) {
+    const matchedBy: DuplicateMatchField =
+      emailMatch && phoneMatch ? 'both' : emailMatch ? 'email' : 'phone';
+    return {
+      success: false,
+      code: 'CANDIDATE_ALREADY_EXISTS',
+      matchedBy,
+      error:
+        'A candidate profile with this email or phone number already exists. Please use the Candidate Self-Service Portal (/candidate/update) to update your profile.',
+      isLiveSupabase: false,
+    };
+  }
+
   const newCandidate: Candidate = {
     id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `cand-${Date.now()}`,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
     full_name: values.full_name,
-    email: values.email.toLowerCase(),
+    email: normalizedEmail,
     phone_number: values.phone_number,
     linkedin_url: values.linkedin_url || null,
     github_url: values.github_url || null,
@@ -341,13 +372,7 @@ export async function createCandidateRecord(values: CandidateApplicationFormValu
     internal_notes: 'Submitted via TalentPulse public application portal. Awaiting technical screening.',
   };
 
-  const locals = getLocalCandidates();
-  const existingIdx = locals.findIndex(c => c.email.toLowerCase() === newCandidate.email.toLowerCase());
-  if (existingIdx >= 0) {
-    locals[existingIdx] = { ...locals[existingIdx], ...newCandidate, updated_at: new Date().toISOString() };
-  } else {
-    locals.unshift(newCandidate);
-  }
+  locals.unshift(newCandidate);
   saveLocalCandidates(locals);
 
   return { success: true, candidate: newCandidate, isLiveSupabase: false };
