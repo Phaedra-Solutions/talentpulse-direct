@@ -1,6 +1,6 @@
 # TalentPulse Direct — Complete System Features & Capabilities Catalog
 
-**Version:** 1.5.0  
+**Version:** 1.6.0  
 **Last Updated:** November 2026  
 **Document Status:** Production Reference  
 
@@ -68,14 +68,17 @@ Unlike traditional applicant tracking systems (ATS), TalentPulse operates on an 
 ---
 
 ### Domain 3: Client Hire Request Portal (`/hire`)
-*   **3.1 Enterprise Staffing Intake**:
-    *   Role requirement selection mapped to active engineering tracks.
-    *   Budget / expected monthly or project cost band selector and target start timeline.
-    *   Client identification: Contact Name, Business/Company Name, Corporate Email, Phone Number, Country, and detailed Project Scope.
+*   **3.1 Enterprise Staffing Intake & Strict Validations**:
+    *   Role requirement selection mapped to active engineering tracks using lightweight summary pagination.
+    *   Budget / expected monthly or project cost band selector (`2–80` chars) and target start timeline.
+    *   Client identification with shared client + server Zod limits (`HIRE_REQUEST_LIMITS`), `maxLength` guards, and live character counters:
+        *   **Business / Company Name (`2–120` chars)**: Valid corporate characters, minimum alphanumeric content, and repeated-character protection.
+        *   **Contact Person Full Name (`2–100` chars)**: Letters, spaces, hyphens, periods, and apostrophes only (no numbers/symbols), minimum 2 letters, and repeated-character guard.
+        *   **Corporate Email (`<= 160` chars)**, Phone Number, Country, and optional **Contract Scope & Technical Requirements** (optional, or `20–3,000` chars when provided, rejecting HTML/script tags).
 *   **3.2 Dual-Consent Commercial Gating**:
     *   Separate explicit checkboxes for Terms of Use and Privacy Policy with persisted consent timestamps.
 *   **3.3 Instant Dispatch (`POST /api/hire-requests`)**:
-    *   Routes leads directly into `/admin/hire-requests` for Sales Executive and Super Admin triage.
+    *   Re-validates all constraints server-side, resolves `role_title`, and routes leads directly into `/admin/hire-requests` for Sales Executive and Super Admin triage.
 
 ---
 
@@ -101,24 +104,31 @@ Unlike traditional applicant tracking systems (ATS), TalentPulse operates on an 
     *   **Endpoint Normalization & Strict Credential Enforcement**: Ensures S3 requests target clean regional endpoints (`https://{region}.digitaloceanspaces.com`) without TLS certificate altname mismatches, with automatic path-style fallback, `WHEN_REQUIRED` checksum configuration for `@aws-sdk/client-s3` compatibility, and automatic runtime config invalidation when config files or env values change. Local disk/in-memory fallbacks are disabled—empty or `.env.example` placeholder credentials reject immediately with `DO_SPACES_NOT_CONFIGURED` (HTTP `503`).
     *   **Actionable S3 Diagnostics**: Formats S3 errors (such as `InvalidAccessKeyId`, `SignatureDoesNotMatch`, and `NoSuchBucket`) into clear errors with explicit error codes without triggering unhandled runtime error overlays.
     *   **Private Proxy Streaming (`/api/candidates/resume`)**: Streams private PDF/DOC/DOCX objects using `Cache-Control: private, no-store, no-cache, must-revalidate` and `Pragma: no-cache`, returning `403` to unauthorized external requests.
-*   **5.4 Bulk Data Exporting**:
+*   **5.4 Server Pagination & Batched Resume Migration**:
+    *   Paginated `/admin/dashboard` queries with indexed KPI counters prevent database memory exhaustion at 400+ candidate scale.
+    *   `npm run migrate:resumes` (`scripts/migrate-resumes-to-do-spaces.ts`) transfers legacy candidate resumes in keyset/cursor batches backed by `idx_candidates_pending_resume_migration`, preventing PostgreSQL statement timeouts.
+*   **5.5 Bulk Data Exporting**:
     *   **Native Excel (`.xlsx`) & CSV**: Formatted candidate exports with dynamic column widths, restricted to HR Executives and Super Admins.
 
 ---
 
 ### Domain 6: Customer Hire Requests Manager (`/admin/hire-requests`)
-*   **6.1 Sales Pipeline Management**:
-    *   Inbound client lead monitoring (`new`, `contacted`, `qualified`, `matching`, `closed`, `declined`) with search, status filtering, and offline notes tracking.
-*   **6.2 Super Admin Controls**:
-    *   Lead deletion (`DELETE /api/hire-requests/[id]`) and CSV export restricted to `super_admin`.
+*   **6.1 Authenticated API-Backed Sales Pipeline**:
+    *   All listing, review updates, deletion, and export actions route through authenticated `/api/hire-requests` and `/api/hire-requests/[id]` endpoints (server-side `service_role` Supabase access gated by `requireAdminAuth` and `canAccessHireRequests`), avoiding browser `anon` RLS blocking and surfacing explicit DB error/retry banners.
+    *   Tracks leads across `new`, `contacted`, `negotiating`, `contract_signed`, and `closed` stages with offline consultation notes.
+*   **6.2 Server-Side Pagination, Lazy Dossier Hydration & Export**:
+    *   SQL-backed pagination (`15 / 25 / 50 / 100` rows per page), debounced multi-column search, clickable KPI status counters, and composite `(status, created_at DESC)` indexing.
+    *   List queries fetch lightweight summary columns and lazy-load full `project_scope` via `GET /api/hire-requests/[id]` when opening the Review Dossier.
+    *   Chunked 500-row server export (`GET /api/hire-requests?export=true`) generates complete CSV downloads across all matching leads (gated to `super_admin` in UI controls).
 
 ---
 
 ### Domain 7: Dynamic Roles & Technology Taxonomy (`/admin/roles`)
-*   **7.1 Track & Role Management**:
-    *   Create, edit, open, or close engineering tracks (`/roles/[slug]`) with single-fetch in-memory candidate counting (eliminating N+1 queries) and safe deletion guards.
-*   **7.2 Technology Moderation & Curation**:
-    *   Approve, reject, or add technologies across `pending`, `approved`, and `rejected` queues with live candidate usage counts.
+*   **7.1 Paginated Track & Role Management**:
+    *   Create, edit, open, or close engineering tracks (`/roles/[slug]`) with paginated listings, lightweight summary queries, single-fetch candidate counting, and safe deletion guards.
+*   **7.2 Technology Moderation, Editing, Merging & Deduplication**:
+    *   Paginated management across `approved`, `pending`, and `rejected` queues with full **Update** (name/status/featured), **Merge** (`POST /api/technologies/merge` atomically reassigning `role_technologies` links and `candidates.tech_stack` entries to a target canonical technology), and **Delete** (with optional Force Delete) workflows.
+    *   Multi-layer pre-save deduplication combining `canonical_key` DB uniqueness (`idx_technologies_canonical_key`), normalized alias matching, and Damerau-Levenshtein typo detection inside `components/TechAutocomplete.tsx` and `/api/technologies`.
 
 ---
 

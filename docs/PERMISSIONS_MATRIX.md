@@ -1,6 +1,6 @@
 # TalentPulse Direct — Role-Based Permissions & Access Control Matrix
 
-**Version:** 1.5.0  
+**Version:** 1.6.0  
 **Effective Date:** November 2026  
 **Document Status:** Security & Authorization Standard  
 
@@ -55,8 +55,8 @@ Legacy role aliases (`admin` → `super_admin`; `recruiter` / `hr_lead` → pipe
 | **Update Own Availability, Overlap & Resume** | ❌ No | ✅ Yes *(OTP Gated)* | ❌ No | ❌ No | ✅ Admin Override |
 | **Edit Candidate Pipeline Stage & Notes** | ❌ No | ❌ No | ✅ Yes | ✅ Yes | ✅ Yes |
 | **Export Candidates to Excel (`.xlsx`) / CSV** | ❌ No | ❌ No | ❌ **Forbidden** | ✅ **Authorized** | ✅ **Authorized** |
-| **View & Update Client Hire Requests** | ❌ No | ❌ No | ✅ Yes | ❌ Forbidden | ✅ Yes |
-| **Delete / Export Client Hire Requests** | ❌ No | ❌ No | ❌ Forbidden | ❌ Forbidden | ✅ **Authorized** |
+| **View, Update & Delete Client Hire Requests** | ❌ No | ❌ No | ✅ Yes | ❌ Forbidden | ✅ Yes |
+| **Export Client Hire Requests (CSV UI)** | ❌ No | ❌ No | ❌ Forbidden | ❌ Forbidden | ✅ **Authorized** |
 | **Manage Engineering Tracks & Tech Queue** | ❌ No | ❌ No | ❌ Forbidden | ✅ Yes | ✅ Yes |
 | **Manage Admin Users & Invite Links** | ❌ No | ❌ No | ❌ Forbidden | ❌ Forbidden | ✅ **Authorized** |
 | **Manage Global & Page SEO / Crawlers** | ❌ No | ❌ No | ❌ Forbidden | ❌ Forbidden | ✅ **Authorized** |
@@ -74,14 +74,14 @@ Server-side route handlers enforce `requireAdminAuth(req, permissionCheck)` from
 | `/api/candidates` | `PATCH` | `canAccessCandidatePipeline` or Verified Supabase Candidate Email JWT | `401 Unauthorized` | `403 Forbidden` | `200 OK` |
 | `/api/candidates/[id]` | `GET` / `PATCH` | `canAccessCandidatePipeline` | `401 Unauthorized` | `403 Forbidden` | `200 OK` |
 | `/api/candidates/resume` | `GET` | Admin Session, Candidate Owner Email, Query Token, or Internal Referer | `403 Forbidden` | `403 Forbidden` | `200 OK` *(`no-store` stream)* |
-| `/api/hire-requests` | `GET` | `canAccessHireRequests` | `401 Unauthorized` | `403 Forbidden` *(HR)* | `200 OK` *(Sales, Super)* |
-| `/api/hire-requests` | `POST` | Public Client Hire Intake | `201 Created` | N/A | `201 Created` |
-| `/api/hire-requests/[id]` | `PATCH` | `canAccessHireRequests` | `401 Unauthorized` | `403 Forbidden` *(HR)* | `200 OK` *(Sales, Super)* |
-| `/api/hire-requests/[id]` | `DELETE` | `canManageAdminUsers` | `401 Unauthorized` | `403 Forbidden` | `200 OK` *(Super)* |
-| `/api/roles` | `GET` | Public Open Tracks / Admin All | `200` *(Open Only)* | `200` *(Open Only)* | `200` *(All)* |
+| `/api/hire-requests` | `GET` | `canAccessHireRequests` *(paginated summary & `?export=true`)* | `401 Unauthorized` | `403 Forbidden` *(HR)* | `200 OK` *(Sales, Super)* |
+| `/api/hire-requests` | `POST` | Public Client Hire Intake *(Zod limits enforced)* | `201 Created` | N/A | `201 Created` |
+| `/api/hire-requests/[id]` | `GET` / `PATCH` / `DELETE` | `canAccessHireRequests` *(dossier hydration, update, delete)* | `401 Unauthorized` | `403 Forbidden` *(HR)* | `200 OK` *(Sales, Super)* |
+| `/api/roles` | `GET` | Public Open Tracks / Admin All *(paginated & summary modes)* | `200` *(Open Only)* | `200` *(Open Only)* | `200` *(All)* |
 | `/api/roles` / `/api/roles/[id]` | `POST` / `PUT` / `DELETE` | `canManageRolesAndTech` | `401 Unauthorized` | `403 Forbidden` *(Sales)* | `200` / `201` |
-| `/api/technologies` | `GET` / `POST` | Public Approved / Admin All; Open Submission | `200` / `201` | N/A | `200` / `201` |
+| `/api/technologies` | `GET` / `POST` | Public Approved / Admin All; Open Submission *(canonical + typo dedup)* | `200` / `201` | N/A | `200` / `201` |
 | `/api/technologies/[id]` | `PUT` / `DELETE` | `canManageRolesAndTech` | `401 Unauthorized` | `403 Forbidden` *(Sales)* | `200 OK` |
+| `/api/technologies/merge` | `POST` | `canManageRolesAndTech` *(merge duplicate techs into target)* | `401 Unauthorized` | `403 Forbidden` *(Sales)* | `200 OK` |
 | `/api/admin/users` | `GET` / `POST` / `PATCH` / `DELETE` | `canManageAdminUsers` | `401 Unauthorized` | `403 Forbidden` | `200` / `201` *(Super)* |
 | `/api/admin/seo` & `/api/admin/seo/pages` | `GET` / `POST` / `DELETE` | `canManageSeo` | `401 Unauthorized` | `403 Forbidden` | `200 OK` *(Super)* |
 | `/api/admin/login` / `logout` / `change-password` / `setup-password` | `POST` / `GET` | Password / Invite Token Verification | `401` / `400` | N/A | `200 OK` |

@@ -1,8 +1,42 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { updateHireRequestStatusAndNotes, deleteHireRequest } from '@/lib/hire-request-store';
+import {
+  getHireRequestById,
+  updateHireRequestStatusAndNotes,
+  deleteHireRequest,
+} from '@/lib/hire-request-store';
 import { HireRequestStatus } from '@/types/hire-request';
 import { requireAdminAuth } from '@/lib/auth/server-auth';
 import { canAccessHireRequests } from '@/lib/auth/permissions';
+
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const auth = requireAdminAuth(request, canAccessHireRequests);
+    if (auth.errorResponse) return auth.errorResponse;
+
+    const { id } = await params;
+    const item = await getHireRequestById(id);
+    if (!item) {
+      return NextResponse.json(
+        { success: false, error: 'Hire request not found' },
+        { status: 404 }
+      );
+    }
+
+    return NextResponse.json({
+      success: true,
+      data: item,
+    });
+  } catch (error: any) {
+    console.error('API /api/hire-requests/[id] GET error:', error);
+    return NextResponse.json(
+      { success: false, error: error.message || 'Failed to fetch hire request' },
+      { status: 500 }
+    );
+  }
+}
 
 export async function PATCH(
   request: NextRequest,

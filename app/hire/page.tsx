@@ -5,8 +5,13 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { hireRequestFormSchema, HireRequestFormValues, TIMELINE_OPTIONS } from '@/types/hire-request';
-import { getRolesList } from '@/lib/roles-tech-store';
+import {
+  hireRequestFormSchema,
+  HireRequestFormValues,
+  HIRE_REQUEST_LIMITS,
+  TIMELINE_OPTIONS,
+} from '@/types/hire-request';
+import { getRolesPaginated } from '@/lib/roles-tech-store';
 import { Role } from '@/types/roles-tech';
 import { ALL_COUNTRIES } from '@/lib/countries-data';
 import { Navbar } from '@/components/Navbar';
@@ -68,12 +73,18 @@ function HireRequestContent() {
 
   const selectedRoleId = watch('role_id');
   const selectedExpectedCost = watch('expected_cost');
+  const watchedBusinessName = watch('business_name') || '';
+  const watchedClientName = watch('client_name') || '';
+  const watchedProjectScope = watch('project_scope') || '';
 
-  // Load dynamic roles from database / store
+  // Load dynamic open roles using lightweight summary projection
   useEffect(() => {
+    let cancelled = false;
     async function fetchRoles() {
       try {
-        const list = await getRolesList(false); // get open roles first, or all
+        const res = await getRolesPaginated({ includeClosed: false, summary: true, limit: 100 });
+        if (cancelled) return;
+        const list = res.roles;
         setRoles(list);
         if (list.length > 0) {
           if (initialRoleParam) {
@@ -90,10 +101,13 @@ function HireRequestContent() {
       } catch (err) {
         console.error('Failed to load roles:', err);
       } finally {
-        setIsLoadingRoles(false);
+        if (!cancelled) setIsLoadingRoles(false);
       }
     }
     fetchRoles();
+    return () => {
+      cancelled = true;
+    };
   }, [initialRoleParam, setValue]);
 
   const selectedRole = roles.find((r) => r.id === selectedRoleId);
@@ -340,7 +354,7 @@ function HireRequestContent() {
                             {role.title}
                           </h3>
                           <p className="font-sans text-xs text-[#111113]/70 line-clamp-2">
-                            {role.description}
+                            {role.short_description || role.description}
                           </p>
                         </div>
 
@@ -394,6 +408,7 @@ function HireRequestContent() {
                   <DollarSign className="w-4 h-4 absolute left-3.5 top-3 text-[#111113]/50" />
                   <input
                     type="text"
+                    maxLength={HIRE_REQUEST_LIMITS.EXPECTED_COST_MAX}
                     {...register('expected_cost')}
                     placeholder="e.g. $75 - $90 / hr or $10k / mo"
                     className="w-full font-mono text-xs pl-10 pr-3.5 py-2.5 border-2 border-[#111113] bg-[#F8F7F4] text-[#111113] placeholder:text-[#111113]/40 focus:outline-hidden focus:border-[#FF4D00]"
@@ -476,21 +491,41 @@ function HireRequestContent() {
             <div className="grid sm:grid-cols-2 gap-4">
               {/* Business Name */}
               <div>
-                <label className="block font-mono text-xs uppercase font-bold text-[#111113] mb-1">
-                  Business / Company Name <span className="text-[#FF4D00]">*</span>
+                <label className="block font-mono text-xs uppercase font-bold text-[#111113] mb-1 flex items-center justify-between gap-2">
+                  <span>
+                    Business / Company Name <span className="text-[#FF4D00]">*</span>
+                  </span>
+                  <span
+                    className={`text-[10px] font-normal ${
+                      watchedBusinessName.length >= HIRE_REQUEST_LIMITS.BUSINESS_NAME_MAX
+                        ? 'text-[#FF4D00] font-bold'
+                        : 'text-[#111113]/55'
+                    }`}
+                  >
+                    {watchedBusinessName.length}/{HIRE_REQUEST_LIMITS.BUSINESS_NAME_MAX}
+                  </span>
                 </label>
                 <div className="relative">
                   <Building2 className="w-4 h-4 absolute left-3.5 top-3 text-[#111113]/50" />
                   <input
                     type="text"
+                    maxLength={HIRE_REQUEST_LIMITS.BUSINESS_NAME_MAX}
                     {...register('business_name')}
                     placeholder="e.g. Acme Artificial Intelligence Inc."
-                    className="w-full font-mono text-xs pl-10 pr-3.5 py-2.5 border-2 border-[#111113] bg-[#F8F7F4] text-[#111113] placeholder:text-[#111113]/40 focus:outline-hidden focus:border-[#FF4D00]"
+                    className={`w-full font-mono text-xs pl-10 pr-3.5 py-2.5 border-2 bg-[#F8F7F4] text-[#111113] placeholder:text-[#111113]/40 focus:outline-hidden ${
+                      errors.business_name
+                        ? 'border-[#FF4D00]'
+                        : 'border-[#111113] focus:border-[#FF4D00]'
+                    }`}
                   />
                 </div>
-                {errors.business_name && (
+                {errors.business_name ? (
                   <p className="font-mono text-xs text-[#FF4D00] mt-1">
                     {errors.business_name.message}
+                  </p>
+                ) : (
+                  <p className="font-mono text-[10px] text-[#111113]/50 mt-1">
+                    2–{HIRE_REQUEST_LIMITS.BUSINESS_NAME_MAX} characters. Legal company or team name.
                   </p>
                 )}
               </div>
@@ -517,21 +552,41 @@ function HireRequestContent() {
 
               {/* Contact Full Name */}
               <div>
-                <label className="block font-mono text-xs uppercase font-bold text-[#111113] mb-1">
-                  Contact Person Full Name <span className="text-[#FF4D00]">*</span>
+                <label className="block font-mono text-xs uppercase font-bold text-[#111113] mb-1 flex items-center justify-between gap-2">
+                  <span>
+                    Contact Person Full Name <span className="text-[#FF4D00]">*</span>
+                  </span>
+                  <span
+                    className={`text-[10px] font-normal ${
+                      watchedClientName.length >= HIRE_REQUEST_LIMITS.CLIENT_NAME_MAX
+                        ? 'text-[#FF4D00] font-bold'
+                        : 'text-[#111113]/55'
+                    }`}
+                  >
+                    {watchedClientName.length}/{HIRE_REQUEST_LIMITS.CLIENT_NAME_MAX}
+                  </span>
                 </label>
                 <div className="relative">
                   <User className="w-4 h-4 absolute left-3.5 top-3 text-[#111113]/50" />
                   <input
                     type="text"
+                    maxLength={HIRE_REQUEST_LIMITS.CLIENT_NAME_MAX}
                     {...register('client_name')}
                     placeholder="e.g. Sarah Connor"
-                    className="w-full font-mono text-xs pl-10 pr-3.5 py-2.5 border-2 border-[#111113] bg-[#F8F7F4] text-[#111113] placeholder:text-[#111113]/40 focus:outline-hidden focus:border-[#FF4D00]"
+                    className={`w-full font-mono text-xs pl-10 pr-3.5 py-2.5 border-2 bg-[#F8F7F4] text-[#111113] placeholder:text-[#111113]/40 focus:outline-hidden ${
+                      errors.client_name
+                        ? 'border-[#FF4D00]'
+                        : 'border-[#111113] focus:border-[#FF4D00]'
+                    }`}
                   />
                 </div>
-                {errors.client_name && (
+                {errors.client_name ? (
                   <p className="font-mono text-xs text-[#FF4D00] mt-1">
                     {errors.client_name.message}
+                  </p>
+                ) : (
+                  <p className="font-mono text-[10px] text-[#111113]/50 mt-1">
+                    2–{HIRE_REQUEST_LIMITS.CLIENT_NAME_MAX} characters. Letters only (spaces, hyphens &amp; apostrophes allowed).
                   </p>
                 )}
               </div>
@@ -545,6 +600,7 @@ function HireRequestContent() {
                   <Mail className="w-4 h-4 absolute left-3.5 top-3 text-[#111113]/50" />
                   <input
                     type="email"
+                    maxLength={HIRE_REQUEST_LIMITS.CLIENT_EMAIL_MAX}
                     {...register('client_email')}
                     placeholder="sconnor@acme.ai"
                     className="w-full font-mono text-xs pl-10 pr-3.5 py-2.5 border-2 border-[#111113] bg-[#F8F7F4] text-[#111113] placeholder:text-[#111113]/40 focus:outline-hidden focus:border-[#FF4D00]"
@@ -585,16 +641,38 @@ function HireRequestContent() {
 
             {/* Project / Contract Scope */}
             <div>
-              <label className="block font-mono text-xs uppercase font-bold text-[#111113] mb-1 flex items-center justify-between">
+              <label className="block font-mono text-xs uppercase font-bold text-[#111113] mb-1 flex items-center justify-between gap-2">
                 <span>Contract Scope &amp; Technical Requirements (Optional)</span>
-                <span className="text-[10px] text-[#111113]/60 uppercase">Max 3,000 chars</span>
+                <span
+                  className={`text-[10px] uppercase ${
+                    watchedProjectScope.length >= HIRE_REQUEST_LIMITS.PROJECT_SCOPE_MAX
+                      ? 'text-[#FF4D00] font-bold'
+                      : 'text-[#111113]/60'
+                  }`}
+                >
+                  {watchedProjectScope.length.toLocaleString()} / {HIRE_REQUEST_LIMITS.PROJECT_SCOPE_MAX.toLocaleString()} chars
+                </span>
               </label>
               <textarea
+                maxLength={HIRE_REQUEST_LIMITS.PROJECT_SCOPE_MAX}
                 {...register('project_scope')}
-                rows={3}
-                placeholder="Briefly describe what your team is building, desired tech stack, team size, duration, or specific timezone overlap needed..."
-                className="w-full font-mono text-xs p-3 border-2 border-[#111113] bg-[#F8F7F4] text-[#111113] placeholder:text-[#111113]/40 focus:outline-hidden focus:border-[#FF4D00]"
+                rows={4}
+                placeholder="Briefly describe what your team is building, desired tech stack, team size, duration, or specific timezone overlap needed (min 20 characters if filled)..."
+                className={`w-full font-mono text-xs p-3 border-2 bg-[#F8F7F4] text-[#111113] placeholder:text-[#111113]/40 focus:outline-hidden ${
+                  errors.project_scope
+                    ? 'border-[#FF4D00]'
+                    : 'border-[#111113] focus:border-[#FF4D00]'
+                }`}
               ></textarea>
+              {errors.project_scope ? (
+                <p className="font-mono text-xs text-[#FF4D00] mt-1">
+                  {errors.project_scope.message}
+                </p>
+              ) : (
+                <p className="font-mono text-[10px] text-[#111113]/50 mt-1">
+                  If filled, enter {HIRE_REQUEST_LIMITS.PROJECT_SCOPE_MIN}–{HIRE_REQUEST_LIMITS.PROJECT_SCOPE_MAX.toLocaleString()} characters (plain text only, no HTML tags).
+                </p>
+              )}
             </div>
 
             {/* Dual Legal Affirmative Consents */}

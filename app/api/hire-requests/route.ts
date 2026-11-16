@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getHireRequestsList, createHireRequest } from '@/lib/hire-request-store';
-import { hireRequestFormSchema } from '@/types/hire-request';
-import { getRolesList } from '@/lib/roles-tech-store';
+import {
+  getHireRequestsPaginated,
+  exportHireRequestsList,
+  createHireRequest,
+} from '@/lib/hire-request-store';
+import { hireRequestFormSchema, HireRequestStatus } from '@/types/hire-request';
+import { getRolesPaginated } from '@/lib/roles-tech-store';
 import { requireAdminAuth } from '@/lib/auth/server-auth';
 import { canAccessHireRequests } from '@/lib/auth/permissions';
 
@@ -11,11 +15,66 @@ export async function GET(request: NextRequest) {
     const auth = requireAdminAuth(request, canAccessHireRequests);
     if (auth.errorResponse) return auth.errorResponse;
 
-    const { requests, isLiveSupabase } = await getHireRequestsList();
+    const { searchParams } = new URL(request.url);
+    const statusParam = (searchParams.get('status') || 'all') as 'all' | HireRequestStatus;
+    const search = searchParams.get('search') || searchParams.get('query') || '';
+    const isExport = searchParams.get('export') === 'true';
+
+    if (isExport) {
+      const exported = await exportHireRequestsList({
+        status: statusParam,
+        search,
+      });
+      if (exported.error) {
+        return NextResponse.json(
+          { success: false, error: exported.error, data: [] },
+          { status: 500 }
+        );
+      }
+      return NextResponse.json({
+        success: true,
+        data: exported.requests,
+        total: exported.requests.length,
+        isLiveSupabase: exported.isLiveSupabase,
+      });
+    }
+
+    const pageParam = parseInt(searchParams.get('page') || '1', 10);
+    const limitParam = parseInt(searchParams.get('limit') || '25', 10);
+    const page = Number.isFinite(pageParam) && pageParam > 0 ? pageParam : 1;
+    const limit = Number.isFinite(limitParam) && limitParam > 0 ? Math.min(limitParam, 100) : 25;
+    const includeStats = searchParams.get('includeStats') === 'true';
+    const summary = searchParams.get('summary') === 'true';
+
+    const result = await getHireRequestsPaginated({
+      page,
+      limit,
+      status: statusParam,
+      search,
+      includeStats,
+      summary,
+    });
+
+    if (result.error) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: result.error,
+          data: [],
+          total: 0,
+        },
+        { status: 500 }
+      );
+    }
+
     return NextResponse.json({
       success: true,
-      data: requests,
-      isLiveSupabase,
+      data: result.requests,
+      total: result.total,
+      page: result.page,
+      limit: result.limit,
+      stats: result.stats,
+      isLiveSupabase: result.isLiveSupabase,
     });
   } catch (error: any) {
     console.error('API /api/hire-requests GET error:', error);
@@ -32,19 +91,24 @@ export async function POST(request: NextRequest) {
     const parsed = hireRequestFormSchema.safeParse(body);
 
     if (!parsed.success) {
+      const firstIssue = parsed.error.issues[0];
       return NextResponse.json(
         {
           success: false,
-          error: 'Validation failed',
+          error: firstIssue?.message || 'Validation failed. Please review your entries.',
           issues: parsed.error.issues,
         },
         { status: 400 }
       );
     }
 
-    // Determine role title
-    const roles = await getRolesList(false);
-    const matchedRole = roles.find(
+    // Determine role title cleanly using lightweight summary role lookup
+    const rolesResult = await getRolesPaginated({
+      includeClosed: true,
+      summary: true,
+      limit: 100,
+    });
+    const matchedRole = rolesResult.roles.find(
       (r) => r.id === parsed.data.role_id || r.slug === parsed.data.role_id
     );
     const roleTitle = matchedRole ? matchedRole.title : parsed.data.role_id;

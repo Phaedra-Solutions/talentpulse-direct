@@ -54,16 +54,18 @@ TalentPulse Direct maintains comprehensive architecture, security, and legal doc
 | Capability | Description |
 | :--- | :--- |
 | ⚡ **Public Application Portal** | High-throughput intake form (`/apply`) with Zod validation, direct resume upload (up to 10 MB), dynamic role tracks (`/roles/[slug]`), and dual legal consent. |
-| 💼 **Client Hire Portal** | Enterprise staffing intake form (`/hire`) with project scoping, budget bands, and dual terms/privacy consent. |
+| 💼 **Client Hire Portal** | Enterprise staffing intake form (`/hire`) with strict client & server character limits/validations (`business_name`, `client_name`, `project_scope`), live counters, budget bands, and dual legal consent. |
+| 📋 **Hire Requests Manager** | Authenticated, server-paginated lead pipeline (`/admin/hire-requests`) with debounced search, status KPI counters, lazy dossier loading, and full chunked CSV export. |
 | 🔄 **Candidate Self-Service** | Supabase Email OTP-verified portal (`/candidate/update`, custom Google SMTP ready) with JWT-gated availability updates and atomic-safe resume replacement. |
 | ☁️ **Private DO Spaces Resume Vault** | Stores resumes privately under `Talent Pulse/{Month-Year}/candidate/{candidateId}_{filename}` with regional endpoint normalization, strict credential enforcement (`DO_SPACES_NOT_CONFIGURED`), and private proxy streaming (`/api/candidates/resume`). |
-| 📊 **Recruiter Command Center** | High-density table & Kanban pipeline (`/admin/dashboard`) with candidate dossiers, private PDF previews, and stage audit notes. |
+| 📊 **Recruiter Command Center** | High-density paginated table & Kanban pipeline (`/admin/dashboard`) with candidate dossiers, private PDF previews, and stage audit notes. |
+| 🧩 **Roles & Tech Moderation** | Paginated engineering tracks & technology taxonomy (`/admin/roles`) with edit/merge/force-delete tooling and multi-layer canonical + typo deduplication. |
 | 📥 **Bulk Excel & CSV Export** | Formatted `.xlsx` and `.csv` candidate exports with dynamic column sizing, restricted to HR Executives and Super Admins. |
 | 👥 **Granular Admin RBAC** | Multi-tier clearance (`Super Admin`, `Sales Executive`, `HR Executive`) enforced via HMAC-SHA256 `admin_session` cookies and Bearer tokens. |
 | 🔑 **Invite Link Onboarding** | One-click copyable cryptographic invite links (`/admin/setup-password?invite=...`) and automated temporary credentials. |
 | 🛡️ **Mandatory First-Login Rotation** | Enforced password change on first login (`/admin/change-password`) secured with salted PBKDF2 SHA-512 (100,000 iterations). |
-| 🌐 **SEO & Crawler Engine** | Complete management suite (`/admin/seo`) with GTM, GA4, social card simulator, Schema.org JSON-LD, `/sitemap.xml`, `/llms.txt`, and `robots.txt` directives. |
-| 🗄️ **Supabase Persistence** | Production PostgreSQL integration with Row-Level Security (RLS) and server-side PII redaction for unauthenticated views. |
+| 🌐 **SEO & Crawler Engine** | Complete management suite (`/admin/seo`) with GTM, GA4, social card simulator, Schema.org JSON-LD, `/sitemap.xml`, and database-backed `/llms.txt` & `/robots.txt` directives. |
+| 🗄️ **Supabase Persistence** | Production PostgreSQL integration with Row-Level Security (RLS), performance indexes, and server-side PII redaction for unauthenticated views. |
 
 ---
 
@@ -143,9 +145,10 @@ The initial super admin account is seeded as `admin@talentpulse.com`. **Rotate t
 npm run reset-admin
 ```
 
-> **Note on Candidate Email OTP & Resume Storage:**
+> **Note on Candidate Email OTP, Resume Storage & Bulk Transfers:**
 > - For live candidate Email OTP codes on `/candidate/update`, configure a custom SMTP provider (such as Google SMTP) in **Supabase Dashboard → Authentication → SMTP Settings** and include `{{ .Token }}` in the **Magic Link** / **Confirm signup** email template.
 > - Valid `DO_SPACES_*` credentials (non-empty, non-placeholder) are strictly required for uploading or streaming resumes; otherwise API handlers fail explicitly with `DO_SPACES_NOT_CONFIGURED` (HTTP `503`).
+> - To migrate legacy inline/external candidate resumes into DigitalOcean Spaces without hitting database statement timeouts, run `npm run migrate:resumes` (uses cursor-batched queries and `idx_candidates_pending_resume_migration`).
 
 ### 5. Start Development Server
 ```bash
@@ -159,7 +162,10 @@ Visit [http://localhost:3000](http://localhost:3000) to view the application:
 - **Candidate Self-Service:** [http://localhost:3000/candidate/update](http://localhost:3000/candidate/update)
 - **Recruiter Admin Login:** [http://localhost:3000/admin/login](http://localhost:3000/admin/login)
 - **Admin Dashboard:** [http://localhost:3000/admin/dashboard](http://localhost:3000/admin/dashboard)
+- **Hire Requests Manager:** [http://localhost:3000/admin/hire-requests](http://localhost:3000/admin/hire-requests)
+- **Roles & Technologies Admin:** [http://localhost:3000/admin/roles](http://localhost:3000/admin/roles)
 - **Admin User Management:** [http://localhost:3000/admin/users](http://localhost:3000/admin/users)
+- **Enterprise SEO Suite:** [http://localhost:3000/admin/seo](http://localhost:3000/admin/seo)
 
 ---
 
