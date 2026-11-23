@@ -71,6 +71,7 @@ function ApplyFormContent() {
     control,
     trigger,
     watch,
+    getValues,
     setValue,
     formState: { errors },
   } = useForm<CandidateApplicationFormValues>({
@@ -228,8 +229,9 @@ function ApplyFormContent() {
       isValid = await trigger(['full_name', 'email', 'phone_number', 'resume_url']);
       if (!isValid) return;
 
+      const currentValues = getValues();
       const hasConflict = await checkDuplicateIdentity(
-        { email: formValues.email, phone_number: formValues.phone_number },
+        { email: currentValues.email, phone_number: currentValues.phone_number },
         true
       );
       if (hasConflict) {
@@ -552,7 +554,7 @@ function ApplyFormContent() {
                           if (val && val.includes('@')) {
                             void checkDuplicateIdentity({
                               email: val,
-                              phone_number: formValues.phone_number,
+                              phone_number: getValues('phone_number'),
                             });
                           }
                         }}
@@ -582,10 +584,11 @@ function ApplyFormContent() {
                             }}
                             onBlur={() => {
                               field.onBlur();
-                              if (formValues.phone_number && formValues.phone_number.replace(/\D/g, '').length >= 7) {
+                              const latestPhone = getValues('phone_number');
+                              if (latestPhone && latestPhone.replace(/\D/g, '').length >= 7) {
                                 void checkDuplicateIdentity({
-                                  email: formValues.email,
-                                  phone_number: formValues.phone_number,
+                                  email: getValues('email'),
+                                  phone_number: latestPhone,
                                 });
                               }
                             }}

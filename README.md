@@ -29,7 +29,7 @@
 
 ### The Problem It Solves
 Traditional applicant tracking software is clunky, hides critical technical data behind multiple clicks, and frustrates candidates with lengthy sign-up walls. TalentPulse Direct provides:
-1. **Frictionless Candidate Applications:** A fast multi-step intake workflow (`/apply`) with direct PDF/DOC/DOCX resume upload, dynamic role tracks, and dual affirmative legal consent.
+1. **Frictionless Candidate Applications:** A fast multi-step intake workflow (`/apply`) with direct PDF/DOC/DOCX resume upload, dynamic role tracks, Step 1 duplicate email/phone protection (directing returning candidates to OTP-verified `/candidate/update`), and dual affirmative legal consent.
 2. **Private Resume Storage & Streaming:** Resumes are stored as private objects in DigitalOcean Spaces (`Talent Pulse/{Month-Year}/candidate/{candidateId}_{filename}`) and served exclusively through an authenticated server-side proxy (`/api/candidates/resume`).
 3. **Candidate Self-Service:** Passwordless Supabase Email OTP verification (`/candidate/update`, compatible with custom Google SMTP) with verified JWT-gated access to update availability, timezone overlap, and safely replace resumes (deleting the previous object only after the new upload succeeds).
 4. **Enterprise-Grade Admin Controls:** Role-based access control (`Super Admin`, `Sales Executive`, `HR Executive`), 1-click cryptographic invite links, mandatory first-login password rotation, and bulk `.xlsx`/`.csv` exports.
@@ -53,7 +53,7 @@ TalentPulse Direct maintains comprehensive architecture, security, and legal doc
 
 | Capability | Description |
 | :--- | :--- |
-| ⚡ **Public Application Portal** | High-throughput intake form (`/apply`) with Zod validation, direct resume upload (up to 10 MB), dynamic role tracks (`/roles/[slug]`), and dual legal consent. |
+| ⚡ **Public Application Portal** | High-throughput intake form (`/apply`) with Step 1 duplicate email/phone blocking (`/candidate/update` CTA), Zod validation, direct resume upload (up to 10 MB), dynamic role tracks (`/roles/[slug]`), and dual legal consent. |
 | 💼 **Client Hire Portal** | Enterprise staffing intake form (`/hire`) with strict client & server character limits/validations (`business_name`, `client_name`, `project_scope`), live counters, budget bands, and dual legal consent. |
 | 📋 **Hire Requests Manager** | Authenticated, server-paginated lead pipeline (`/admin/hire-requests`) with debounced search, status KPI counters, lazy dossier loading, and full chunked CSV export. |
 | 🔄 **Candidate Self-Service** | Supabase Email OTP-verified portal (`/candidate/update`, custom Google SMTP ready) with JWT-gated availability updates and atomic-safe resume replacement. |

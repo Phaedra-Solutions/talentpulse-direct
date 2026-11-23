@@ -1,4 +1,4 @@
-import { parsePhoneNumber, isValidPhoneNumber } from 'libphonenumber-js';
+import { parsePhoneNumber } from 'libphonenumber-js';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Candidate } from '@/types/candidate';
 
@@ -24,6 +24,7 @@ export function extractPhoneDigits(phone?: string | null): string {
 export function parseNormalizedPhone(phone?: string | null): {
   raw: string;
   digits: string;
+  countryCallingCode: string | null;
   e164: string | null;
   international: string | null;
   nationalNumber: string | null;
@@ -35,30 +36,43 @@ export function parseNormalizedPhone(phone?: string | null): {
     return {
       raw,
       digits,
+      countryCallingCode: null,
       e164: null,
       international: null,
       nationalNumber: null,
     };
   }
 
-  try {
-    if (isValidPhoneNumber(raw, 'US')) {
-      const parsed = parsePhoneNumber(raw, 'US');
-      return {
-        raw,
-        digits,
-        e164: parsed.number,
-        international: parsed.formatInternational(),
-        nationalNumber: parsed.nationalNumber,
-      };
+  // Only infer country calling code when an explicit international prefix (+ or 00) is present.
+  // Never assume a default country (e.g. 'US') because doing so falsely maps foreign local digits onto +1.
+  const intlCandidate = raw.startsWith('+')
+    ? raw
+    : raw.startsWith('00') && digits.length >= 9
+    ? `+${digits.slice(2)}`
+    : null;
+
+  if (intlCandidate) {
+    try {
+      const parsed = parsePhoneNumber(intlCandidate);
+      if (parsed) {
+        return {
+          raw,
+          digits: extractPhoneDigits(parsed.number) || digits,
+          countryCallingCode: parsed.countryCallingCode || null,
+          e164: parsed.number,
+          international: parsed.formatInternational(),
+          nationalNumber: parsed.nationalNumber || null,
+        };
+      }
+    } catch {
+      // Fall back to digit-only representation when explicit + prefix cannot be parsed by libphonenumber
     }
-  } catch {
-    // Fall back to digit normalization when libphonenumber cannot parse legacy formatting
   }
 
   return {
     raw,
     digits,
+    countryCallingCode: null,
     e164: null,
     international: null,
     nationalNumber: null,
@@ -70,26 +84,32 @@ export function phonesMatch(storedPhone?: string | null, inputPhone?: string | n
   const b = parseNormalizedPhone(inputPhone);
 
   if (!a.raw || !b.raw) return false;
+
+  // When both numbers specify a country calling code, different country codes can NEVER match,
+  // even when national/local digits are identical (e.g. +92 300 1234567 vs +91 300 1234567).
+  if (a.countryCallingCode && b.countryCallingCode) {
+    if (a.countryCallingCode !== b.countryCallingCode) {
+      return false;
+    }
+    if (a.e164 && b.e164 && a.e164 === b.e164) {
+      return true;
+    }
+    if (a.nationalNumber && b.nationalNumber) {
+      return a.nationalNumber === b.nationalNumber;
+    }
+    return a.digits.length >= 7 && a.digits === b.digits;
+  }
+
+  // If one number includes an explicit country code and the other does not,
+  // only match if the unprefixed string already contains the full international digits (dial code + local).
+  // Never match bare local digits alone, which would cause false cross-country blocks.
+  if (a.countryCallingCode || b.countryCallingCode) {
+    return a.digits.length >= 8 && a.digits === b.digits;
+  }
+
+  // Neither number includes a country code: compare full digit sequences strictly.
   if (a.raw.toLowerCase() === b.raw.toLowerCase()) return true;
-
-  if (a.e164 && b.e164 && a.e164 === b.e164) return true;
-
-  if (a.digits.length >= 7 && b.digits.length >= 7 && a.digits === b.digits) {
-    return true;
-  }
-
-  // Handle legacy records saved without country dial code vs full international format
-  if (
-    a.nationalNumber &&
-    b.nationalNumber &&
-    a.nationalNumber.length >= 8 &&
-    a.nationalNumber === b.nationalNumber &&
-    (a.digits === a.nationalNumber || b.digits === b.nationalNumber)
-  ) {
-    return true;
-  }
-
-  return false;
+  return a.digits.length >= 7 && b.digits.length >= 7 && a.digits === b.digits;
 }
 
 /**
@@ -150,7 +170,7 @@ export async function findExistingCandidateMatch(
         .from('candidates')
         .select('phone_number')
         .or(orClauses.join(','))
-        .limit(25);
+        .limit(50);
 
       if (phoneError) {
         throw new Error(`Unable to verify candidate phone uniqueness: ${phoneError.message}`);

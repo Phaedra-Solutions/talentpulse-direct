@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { CountryCode, AsYouType, getCountryCallingCode } from 'libphonenumber-js';
+import { CountryCode, AsYouType, parsePhoneNumber } from 'libphonenumber-js';
 import { ALL_COUNTRIES, CountryInfo, validateInternationalPhone } from '@/lib/countries-data';
 import { ChevronDown, Search, Check, AlertCircle, Phone } from 'lucide-react';
 
@@ -20,6 +20,96 @@ export interface PhoneInputWithCountryProps {
   className?: string;
 }
 
+const COUNTRIES_BY_LONGEST_DIAL_CODE = [...ALL_COUNTRIES].sort(
+  (a, b) => b.dialCode.length - a.dialCode.length
+);
+
+function detectCountryFromInternationalInput(
+  rawValue: string,
+  currentCountry: CountryCode
+): CountryCode {
+  const trimmed = rawValue.trim();
+  if (!trimmed.startsWith('+')) return currentCountry;
+
+  try {
+    const parsed = parsePhoneNumber(trimmed);
+    if (parsed?.country) {
+      return parsed.country;
+    }
+    if (parsed?.countryCallingCode) {
+      const callingDial = `+${parsed.countryCallingCode}`;
+      const currentInfo = ALL_COUNTRIES.find((c) => c.code === currentCountry);
+      if (currentInfo?.dialCode === callingDial) {
+        return currentCountry;
+      }
+      const matched = ALL_COUNTRIES.find((c) => c.dialCode === callingDial);
+      if (matched) return matched.code;
+    }
+  } catch {
+    // Partial international number while typing: fall back to longest dial code prefix matching
+  }
+
+  const currentInfo = ALL_COUNTRIES.find((c) => c.code === currentCountry);
+  const longestMatch = COUNTRIES_BY_LONGEST_DIAL_CODE.find((c) => {
+    if (!trimmed.startsWith(c.dialCode)) return false;
+    const nextChar = trimmed.slice(c.dialCode.length, c.dialCode.length + 1);
+    return !nextChar || /\s|\d|\(|-/.test(nextChar);
+  });
+
+  if (longestMatch) {
+    if (currentInfo && currentInfo.dialCode === longestMatch.dialCode) {
+      return currentCountry;
+    }
+    return longestMatch.code;
+  }
+
+  return currentCountry;
+}
+
+function stripDialCodePrefix(rawInput: string, currentDialCode: string): string {
+  const trimmed = rawInput.trim();
+  if (!trimmed.startsWith('+')) return trimmed;
+
+  try {
+    const parsed = parsePhoneNumber(trimmed);
+    if (parsed?.nationalNumber) {
+      return parsed.nationalNumber;
+    }
+  } catch {
+    // Fall back to prefix stripping
+  }
+
+  if (trimmed.startsWith(currentDialCode)) {
+    return trimmed.slice(currentDialCode.length).replace(/^[\s\-()]+/, '');
+  }
+
+  const matchedPrefix = COUNTRIES_BY_LONGEST_DIAL_CODE.find((c) => trimmed.startsWith(c.dialCode));
+  if (matchedPrefix) {
+    return trimmed.slice(matchedPrefix.dialCode.length).replace(/^[\s\-()]+/, '');
+  }
+
+  return trimmed.replace(/^\+\d*\s*/, '');
+}
+
+function buildCanonicalPhoneValue(
+  formattedLocal: string,
+  countryInfo: CountryInfo,
+  validation: ReturnType<typeof validateInternationalPhone>
+): string {
+  const trimmed = formattedLocal.trim();
+  if (!trimmed || !/\d/.test(trimmed)) return '';
+
+  if (validation.isValid && validation.formatted) {
+    return validation.formatted;
+  }
+
+  if (trimmed.startsWith('+')) {
+    return trimmed;
+  }
+
+  return `${countryInfo.dialCode} ${trimmed}`;
+}
+
 export function PhoneInputWithCountry({
   value,
   onChange,
@@ -34,21 +124,31 @@ export function PhoneInputWithCountry({
   disabled = false,
   className = '',
 }: PhoneInputWithCountryProps) {
-  const [selectedCountry, setSelectedCountry] = useState<CountryCode>(defaultCountry);
+  const [selectedCountry, setSelectedCountry] = useState<CountryCode>(() =>
+    value && value.trim().startsWith('+')
+      ? detectCountryFromInternationalInput(value, defaultCountry)
+      : defaultCountry
+  );
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [localInput, setLocalInput] = useState('');
+  const [localInput, setLocalInput] = useState(() => value || '');
   const dropdownRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   const [prevValue, setPrevValue] = useState(value);
+  const [lastEmitted, setLastEmitted] = useState<string | null>(null);
   if (value !== prevValue) {
     setPrevValue(value);
-    setLocalInput(value || '');
-    if (value && value.startsWith('+')) {
-      const matchedCountry = ALL_COUNTRIES.find((c) => value.startsWith(c.dialCode));
-      if (matchedCountry && matchedCountry.code !== selectedCountry) {
-        setSelectedCountry(matchedCountry.code);
+    if (value === lastEmitted) {
+      setLastEmitted(null);
+    } else {
+      setLastEmitted(null);
+      setLocalInput(value || '');
+      if (value && value.trim().startsWith('+')) {
+        const matchedCountry = detectCountryFromInternationalInput(value, selectedCountry);
+        if (matchedCountry !== selectedCountry) {
+          setSelectedCountry(matchedCountry);
+        }
       }
     }
   }
@@ -92,43 +192,56 @@ export function PhoneInputWithCountry({
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const rawValue = e.target.value;
 
-    // Check if user entered full international number with +
-    if (rawValue.startsWith('+')) {
-      const matched = ALL_COUNTRIES.find((c) => rawValue.startsWith(c.dialCode));
-      if (matched && matched.code !== selectedCountry) {
-        setSelectedCountry(matched.code);
+    let targetCountry = selectedCountry;
+    if (rawValue.trim().startsWith('+')) {
+      targetCountry = detectCountryFromInternationalInput(rawValue, selectedCountry);
+      if (targetCountry !== selectedCountry) {
+        setSelectedCountry(targetCountry);
       }
     }
 
-    // Format with AsYouType
-    const formatter = new AsYouType(selectedCountry);
+    const targetCountryInfo =
+      ALL_COUNTRIES.find((c) => c.code === targetCountry) || currentCountry;
+
+    // Format with AsYouType for display
+    const formatter = new AsYouType(targetCountry);
     const formatted = formatter.input(rawValue);
     setLocalInput(formatted);
 
-    // Validate
-    const validation = validateInternationalPhone(formatted, selectedCountry);
-    onChange(formatted, validation.isValid, selectedCountry);
+    // Always emit value with country dial code so backend never receives ambiguous bare local digits
+    const validation = validateInternationalPhone(formatted, targetCountry);
+    const emittedValue = buildCanonicalPhoneValue(formatted, targetCountryInfo, validation);
+    setLastEmitted(emittedValue);
+    onChange(emittedValue, validation.isValid, targetCountry);
   };
 
   // Select a new country from dropdown
   const handleSelectCountry = (country: CountryInfo) => {
+    const oldDialCode = currentCountry.dialCode;
+    const hadExplicitPlus = localInput.trim().startsWith('+');
+    const subscriberPart = stripDialCodePrefix(localInput, oldDialCode);
+
     setSelectedCountry(country.code);
     setIsOpen(false);
     setSearchQuery('');
 
-    // If localInput has old country dial code or is empty, adapt it
-    let newNumber = localInput;
-    if (!newNumber || newNumber.startsWith('+')) {
-      newNumber = `${country.dialCode} `;
-    } else {
-      // Reformat existing digits with new country
+    let nextLocalInput = '';
+    if (!subscriberPart) {
+      nextLocalInput = `${country.dialCode} `;
+    } else if (hadExplicitPlus) {
       const formatter = new AsYouType(country.code);
-      newNumber = formatter.input(newNumber);
+      nextLocalInput = formatter.input(`${country.dialCode} ${subscriberPart}`);
+    } else {
+      const formatter = new AsYouType(country.code);
+      nextLocalInput = formatter.input(subscriberPart);
     }
-    setLocalInput(newNumber);
 
-    const validation = validateInternationalPhone(newNumber, country.code);
-    onChange(newNumber, validation.isValid, country.code);
+    setLocalInput(nextLocalInput);
+
+    const validation = validateInternationalPhone(nextLocalInput, country.code);
+    const emittedValue = buildCanonicalPhoneValue(nextLocalInput, country, validation);
+    setLastEmitted(emittedValue);
+    onChange(emittedValue, validation.isValid, country.code);
   };
 
   const validationResult = useMemo(() => {

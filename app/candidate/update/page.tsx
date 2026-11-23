@@ -721,7 +721,7 @@ function CandidateUpdateContent() {
                   className="btn-brutalist btn-brutalist-primary text-xs py-3 px-6 min-h-[44px] flex items-center justify-center gap-2 disabled:opacity-50"
                 >
                   <Save className="w-4 h-4 text-white shrink-0" />
-                  <span>{isSaving ? 'SAVING UPDATES...' : 'SAVE UPDATED AVAILABILITY'}</span>
+                  <span>{isSaving ? 'SAVING UPDATES...' : 'SAVE PROFILE UPDATES'}</span>
                 </button>
               </div>
             </form>
