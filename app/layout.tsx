@@ -20,7 +20,6 @@ const spaceMono = Space_Mono({
 });
 
 const syne = Syne({
-  weight: ['700', '800'],
   subsets: ['latin'],
   variable: '--font-syne',
   display: 'swap',
