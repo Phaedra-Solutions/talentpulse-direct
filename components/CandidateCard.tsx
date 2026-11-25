@@ -19,10 +19,9 @@ import {
 interface CandidateCardProps {
   candidate: Candidate;
   onSelect: (candidate: Candidate) => void;
-  compact?: boolean;
 }
 
-export function CandidateCard({ candidate, onSelect, compact = false }: CandidateCardProps) {
+export function CandidateCard({ candidate, onSelect }: CandidateCardProps) {
   const roleMeta = getRoleMeta(candidate.primary_role);
   const availMeta = getAvailabilityMeta(candidate.availability_status);
   const stageMeta = getPipelineStageMeta(candidate.pipeline_stage);

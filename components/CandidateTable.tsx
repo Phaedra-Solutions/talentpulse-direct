@@ -250,6 +250,7 @@ export function CandidateTable({
                       <option value="interviewing">Interviewing</option>
                       <option value="assigned">Assigned</option>
                       <option value="on_hold">On Hold</option>
+                      <option value="rejected">Rejected / Archived</option>
                     </select>
                   </td>
 

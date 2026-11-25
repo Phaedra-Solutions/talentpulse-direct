@@ -7,6 +7,8 @@ export type HireRequestStatus =
   | 'contract_signed'
   | 'closed';
 
+export type HireRequestFilterStatus = 'active' | 'all' | HireRequestStatus;
+
 export const TIMELINE_OPTIONS = [
   { value: 'immediate', label: 'Immediately (within 1 week)' },
   { value: '1_2_weeks', label: '1 - 2 Weeks' },
@@ -16,14 +18,23 @@ export const TIMELINE_OPTIONS = [
 
 export const HIRE_REQUEST_LIMITS = {
   BUSINESS_NAME_MIN: 2,
-  BUSINESS_NAME_MAX: 120,
+  BUSINESS_NAME_MAX: 80,
+  BUSINESS_NAME_MAX_TOKEN: 40,
   CLIENT_NAME_MIN: 2,
-  CLIENT_NAME_MAX: 100,
+  CLIENT_NAME_MAX: 60,
+  CLIENT_NAME_MAX_TOKEN: 35,
   PROJECT_SCOPE_MIN: 20,
-  PROJECT_SCOPE_MAX: 3000,
+  PROJECT_SCOPE_MAX: 2000,
+  PROJECT_SCOPE_MAX_TOKEN: 100,
   EXPECTED_COST_MIN: 2,
-  EXPECTED_COST_MAX: 80,
-  CLIENT_EMAIL_MAX: 160,
+  EXPECTED_COST_MAX: 50,
+  CLIENT_EMAIL_MAX: 120,
+  CLIENT_PHONE_MIN: 6,
+  CLIENT_PHONE_MAX: 24,
+  COUNTRY_MIN: 2,
+  COUNTRY_MAX: 80,
+  TIMELINE_MAX: 60,
+  OFFLINE_NOTES_MAX: 2000,
 } as const;
 
 export interface HireRequest {
@@ -48,10 +59,33 @@ export interface HireRequest {
 }
 
 const HAS_REPEATED_CHAR_RUN = /(.)\1{5,}/;
+const HAS_REPEATED_PATTERN_LOOP = /([a-zA-Z]{2,8})\1{2,}/i;
 const HAS_HTML_TAGS = /<\/?[a-z][\s\S]*>/i;
 
+function hasExcessiveTokenLength(value: string, maxTokenLen: number): boolean {
+  return value
+    .trim()
+    .split(/\s+/)
+    .some((token) => token.length > maxTokenLen);
+}
+
+function hasLowDiversityLongToken(value: string, minTokenLen = 12, maxUniqueLetters = 3): boolean {
+  return value
+    .trim()
+    .split(/\s+/)
+    .some((token) => {
+      const lettersOnly = token.toLowerCase().replace(/[^a-z\u00C0-\u024F]/g, '');
+      if (lettersOnly.length < minTokenLen) return false;
+      return new Set(lettersOnly).size <= maxUniqueLetters;
+    });
+}
+
 export const hireRequestFormSchema = z.object({
-  role_id: z.string().trim().min(1, 'Please select the engineering or leadership role required'),
+  role_id: z
+    .string()
+    .trim()
+    .min(1, 'Please select the engineering or leadership role required')
+    .max(100, 'Role identifier is too long'),
   expected_cost: z
     .string()
     .trim()
@@ -62,8 +96,16 @@ export const hireRequestFormSchema = z.object({
     .max(
       HIRE_REQUEST_LIMITS.EXPECTED_COST_MAX,
       `Expected budget must be at most ${HIRE_REQUEST_LIMITS.EXPECTED_COST_MAX} characters`
+    )
+    .refine(
+      (val) => !HAS_HTML_TAGS.test(val),
+      'HTML or script tags are not permitted'
     ),
-  timeline_to_start: z.string().trim().min(1, 'Please select your target start timeline'),
+  timeline_to_start: z
+    .string()
+    .trim()
+    .min(1, 'Please select your target start timeline')
+    .max(HIRE_REQUEST_LIMITS.TIMELINE_MAX, 'Target timeline value is too long'),
   client_name: z
     .string()
     .trim()
@@ -84,20 +126,40 @@ export const hireRequestFormSchema = z.object({
       'Contact person full name must contain at least 2 letters'
     )
     .refine(
-      (val) => !HAS_REPEATED_CHAR_RUN.test(val),
+      (val) =>
+        !HAS_REPEATED_CHAR_RUN.test(val) &&
+        !HAS_REPEATED_PATTERN_LOOP.test(val) &&
+        !hasLowDiversityLongToken(val),
       'Please enter a real contact person name'
+    )
+    .refine(
+      (val) => !hasExcessiveTokenLength(val, HIRE_REQUEST_LIMITS.CLIENT_NAME_MAX_TOKEN),
+      `Individual words in contact name cannot exceed ${HIRE_REQUEST_LIMITS.CLIENT_NAME_MAX_TOKEN} characters`
     ),
   client_email: z
     .string()
     .trim()
-    .max(HIRE_REQUEST_LIMITS.CLIENT_EMAIL_MAX, 'Email address is too long')
+    .max(
+      HIRE_REQUEST_LIMITS.CLIENT_EMAIL_MAX,
+      `Email address cannot exceed ${HIRE_REQUEST_LIMITS.CLIENT_EMAIL_MAX} characters`
+    )
     .email('Please enter a valid business email'),
   client_phone: z
     .string()
     .trim()
-    .min(6, 'Please provide a valid international phone number with country code')
-    .max(32, 'Phone number is too long'),
-  country: z.string().trim().min(2, 'Please select or enter your business country/location').max(100),
+    .min(
+      HIRE_REQUEST_LIMITS.CLIENT_PHONE_MIN,
+      'Please provide a valid international phone number with country code'
+    )
+    .max(
+      HIRE_REQUEST_LIMITS.CLIENT_PHONE_MAX,
+      `Phone number cannot exceed ${HIRE_REQUEST_LIMITS.CLIENT_PHONE_MAX} characters`
+    ),
+  country: z
+    .string()
+    .trim()
+    .min(HIRE_REQUEST_LIMITS.COUNTRY_MIN, 'Please select or enter your business country/location')
+    .max(HIRE_REQUEST_LIMITS.COUNTRY_MAX, 'Country name is too long'),
   business_name: z
     .string()
     .trim()
@@ -118,15 +180,22 @@ export const hireRequestFormSchema = z.object({
       'Business name must contain at least 2 alphanumeric characters'
     )
     .refine(
-      (val) => !HAS_REPEATED_CHAR_RUN.test(val),
+      (val) =>
+        !HAS_REPEATED_CHAR_RUN.test(val) &&
+        !HAS_REPEATED_PATTERN_LOOP.test(val) &&
+        !hasLowDiversityLongToken(val),
       'Please enter a valid company or organization name'
+    )
+    .refine(
+      (val) => !hasExcessiveTokenLength(val, HIRE_REQUEST_LIMITS.BUSINESS_NAME_MAX_TOKEN),
+      `Individual words in business name cannot exceed ${HIRE_REQUEST_LIMITS.BUSINESS_NAME_MAX_TOKEN} characters`
     ),
   project_scope: z
     .string()
     .trim()
     .max(
       HIRE_REQUEST_LIMITS.PROJECT_SCOPE_MAX,
-      `Contract scope & technical requirements cannot exceed ${HIRE_REQUEST_LIMITS.PROJECT_SCOPE_MAX} characters`
+      `Contract scope & technical requirements cannot exceed ${HIRE_REQUEST_LIMITS.PROJECT_SCOPE_MAX.toLocaleString()} characters`
     )
     .refine(
       (val) => val.length === 0 || val.length >= HIRE_REQUEST_LIMITS.PROJECT_SCOPE_MIN,
@@ -140,6 +209,10 @@ export const hireRequestFormSchema = z.object({
       (val) => !HAS_HTML_TAGS.test(val),
       'HTML or script tags are not permitted in contract scope'
     )
+    .refine(
+      (val) => val.length === 0 || !hasExcessiveTokenLength(val, HIRE_REQUEST_LIMITS.PROJECT_SCOPE_MAX_TOKEN),
+      'Contract scope contains an overly long unbroken word; please separate terms with spaces'
+    )
     .optional()
     .or(z.literal('')),
   terms_accepted: z.boolean().refine((val) => val === true, {
@@ -148,6 +221,18 @@ export const hireRequestFormSchema = z.object({
   privacy_accepted: z.boolean().refine((val) => val === true, {
     message: 'You must acknowledge and accept the Global Privacy Policy to proceed.',
   }),
+});
+
+export const hireRequestPatchSchema = z.object({
+  status: z.enum(['new', 'contacted', 'negotiating', 'contract_signed', 'closed']).optional(),
+  offline_notes: z
+    .string()
+    .max(
+      HIRE_REQUEST_LIMITS.OFFLINE_NOTES_MAX,
+      `Internal recruiter notes cannot exceed ${HIRE_REQUEST_LIMITS.OFFLINE_NOTES_MAX.toLocaleString()} characters`
+    )
+    .refine((val) => !HAS_HTML_TAGS.test(val), 'HTML tags are not permitted in notes')
+    .optional(),
 });
 
 export type HireRequestFormValues = z.infer<typeof hireRequestFormSchema>;

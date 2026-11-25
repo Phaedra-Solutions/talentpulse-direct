@@ -422,7 +422,7 @@ export function CandidateDetailDrawer({
                 Change Pipeline Status:
               </label>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 font-mono text-xs">
-                {(['new', 'vetted', 'interviewing', 'assigned', 'on_hold'] as PipelineStage[]).map((stage) => {
+                {(['new', 'vetted', 'interviewing', 'assigned', 'on_hold', 'rejected'] as PipelineStage[]).map((stage) => {
                   const meta = getPipelineStageMeta(stage);
                   const isSelected = currentStage === stage;
                   return (
@@ -431,8 +431,10 @@ export function CandidateDetailDrawer({
                       type="button"
                       onClick={() => setCurrentStage(stage)}
                       className={`text-xs font-bold uppercase px-3 py-2 border text-left transition ${
-                        isSelected 
-                          ? 'border-[#111113] bg-[#111113] text-[#F8F7F4]' 
+                        isSelected
+                          ? stage === 'rejected'
+                            ? 'border-neutral-800 bg-neutral-800 text-[#F8F7F4]'
+                            : 'border-[#111113] bg-[#111113] text-[#F8F7F4]'
                           : 'border-[#111113]/40 bg-white text-[#111113] hover:border-[#111113]'
                       }`}
                     >

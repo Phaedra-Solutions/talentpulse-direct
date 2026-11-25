@@ -102,13 +102,23 @@ export interface CandidateKpiStats {
   mobileAndArchs: number;
 }
 
+export interface CandidateStageStats {
+  activeTotal: number;
+  new: number;
+  vetted: number;
+  interviewing: number;
+  assigned: number;
+  on_hold: number;
+  rejected: number;
+}
+
 export interface PaginatedCandidatesResult {
   candidates: Candidate[];
   total: number;
   page: number;
   limit: number;
   stats?: CandidateKpiStats;
-  stageCounts?: Record<string, number>;
+  stageStats?: CandidateStageStats;
   isLiveSupabase: boolean;
   source: string;
   error?: string;
@@ -120,7 +130,7 @@ function buildCandidateQueryParams(
     page?: number;
     limit?: number;
     includeStats?: boolean;
-    view?: 'table' | 'cards' | 'kanban';
+    view?: 'table' | 'cards';
     isExport?: boolean;
   }
 ): URLSearchParams {
@@ -154,7 +164,7 @@ export async function getCandidatesPaginated(
     page?: number;
     limit?: number;
     includeStats?: boolean;
-    view?: 'table' | 'cards' | 'kanban';
+    view?: 'table' | 'cards';
     isExport?: boolean;
   }
 ): Promise<PaginatedCandidatesResult> {
@@ -196,7 +206,7 @@ export async function getCandidatesPaginated(
     page: typeof data.page === 'number' ? data.page : page,
     limit: typeof data.limit === 'number' ? data.limit : limit,
     stats: data.stats,
-    stageCounts: data.stageCounts,
+    stageStats: data.stageStats,
     isLiveSupabase: data.source === 'supabase',
     source: data.source || 'supabase',
   };

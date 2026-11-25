@@ -20,12 +20,29 @@ export type EnglishProficiency =
   | 'professional'
   | 'intermediate';
 
-export type PipelineStage = 
-  | 'new'
-  | 'vetted'
-  | 'interviewing'
-  | 'assigned'
-  | 'on_hold';
+export const PIPELINE_STAGE_VALUES = [
+  'new',
+  'vetted',
+  'interviewing',
+  'assigned',
+  'on_hold',
+  'rejected',
+] as const;
+
+export const ACTIVE_PIPELINE_STAGES = [
+  'new',
+  'vetted',
+  'interviewing',
+  'assigned',
+  'on_hold',
+] as const;
+
+export type PipelineStage = (typeof PIPELINE_STAGE_VALUES)[number];
+
+export const candidateStagePatchSchema = z.object({
+  pipeline_stage: z.enum(PIPELINE_STAGE_VALUES),
+  internal_notes: z.string().max(5000, 'Evaluation notes cannot exceed 5,000 characters').optional(),
+});
 
 export type WorkMode = 'remote' | 'hybrid' | 'onsite';
 export type TargetRegion = 'USA' | 'Europe' | 'Asia' | 'APAC';
@@ -281,6 +298,7 @@ export const PIPELINE_STAGE_LABELS: Record<string, { label: string; step: number
   interviewing: { label: 'Client Interviewing', step: 3, colorClass: 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300' },
   assigned: { label: 'Active on Project', step: 4, colorClass: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300' },
   on_hold: { label: 'On Hold / Paused', step: 0, colorClass: 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300' },
+  rejected: { label: 'Rejected / Archived', step: -1, colorClass: 'bg-neutral-200 text-neutral-700 dark:bg-neutral-800 dark:text-neutral-300' },
 };
 
 export function getPipelineStageMeta(stage?: string): { label: string; step: number; colorClass: string } {

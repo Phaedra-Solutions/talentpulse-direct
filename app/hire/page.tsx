@@ -73,8 +73,10 @@ function HireRequestContent() {
 
   const selectedRoleId = watch('role_id');
   const selectedExpectedCost = watch('expected_cost');
+  const watchedExpectedCost = selectedExpectedCost || '';
   const watchedBusinessName = watch('business_name') || '';
   const watchedClientName = watch('client_name') || '';
+  const watchedClientEmail = watch('client_email') || '';
   const watchedProjectScope = watch('project_scope') || '';
 
   // Load dynamic open roles using lightweight summary projection
@@ -168,7 +170,7 @@ function HireRequestContent() {
                 <h1 className="font-syne font-extrabold text-2xl sm:text-4xl text-[#111113]">
                   Hiring Request Received
                 </h1>
-                <p className="font-sans text-sm text-[#111113]/80">
+                <p className="font-sans text-sm text-[#111113]/80 break-words [overflow-wrap:anywhere]">
                   Thank you, <strong>{submittedData.client_name}</strong>. Our senior technical recruitment team has received your talent request for <strong>{submittedData.business_name}</strong>.
                 </p>
               </div>
@@ -176,41 +178,41 @@ function HireRequestContent() {
 
             {/* Request Summary Receipt */}
             <div className="bg-[#F8F7F4] border-2 border-[#111113] p-5 sm:p-6 space-y-4 font-mono text-xs">
-              <div className="flex items-center justify-between pb-3 border-b border-[#111113]/20">
-                <span className="uppercase text-[#111113]/60">Requested Track</span>
-                <span className="font-bold text-sm text-[#111113]">{submittedData.role_title || submittedData.roleTitle}</span>
+              <div className="flex items-center justify-between pb-3 border-b border-[#111113]/20 gap-3">
+                <span className="uppercase text-[#111113]/60 shrink-0">Requested Track</span>
+                <span className="font-bold text-sm text-[#111113] break-words text-right">{submittedData.role_title || submittedData.roleTitle}</span>
               </div>
               <div className="grid sm:grid-cols-2 gap-4">
-                <div>
+                <div className="min-w-0">
                   <span className="uppercase text-[#111113]/60 block mb-1">Company / Organization</span>
-                  <span className="font-bold text-[#111113]">{submittedData.business_name}</span>
+                  <span className="font-bold text-[#111113] break-words [overflow-wrap:anywhere] block">{submittedData.business_name}</span>
                 </div>
-                <div>
+                <div className="min-w-0">
                   <span className="uppercase text-[#111113]/60 block mb-1">Target Location</span>
-                  <span className="font-bold text-[#111113]">{submittedData.country}</span>
+                  <span className="font-bold text-[#111113] break-words block">{submittedData.country}</span>
                 </div>
-                <div>
+                <div className="min-w-0">
                   <span className="uppercase text-[#111113]/60 block mb-1">Expected Cost / Budget</span>
-                  <span className="font-bold text-[#FF4D00]">{submittedData.expected_cost}</span>
+                  <span className="font-bold text-[#FF4D00] break-words block">{submittedData.expected_cost}</span>
                 </div>
-                <div>
+                <div className="min-w-0">
                   <span className="uppercase text-[#111113]/60 block mb-1">Target Start Timeline</span>
-                  <span className="font-bold text-[#111113]">{submittedData.timeline_to_start}</span>
+                  <span className="font-bold text-[#111113] break-words block">{submittedData.timeline_to_start}</span>
                 </div>
-                <div>
+                <div className="min-w-0">
                   <span className="uppercase text-[#111113]/60 block mb-1">Direct Contact Phone</span>
-                  <span className="font-bold text-[#111113]">{submittedData.client_phone}</span>
+                  <span className="font-bold text-[#111113] break-words block">{submittedData.client_phone}</span>
                 </div>
-                <div>
+                <div className="min-w-0">
                   <span className="uppercase text-[#111113]/60 block mb-1">Business Email</span>
-                  <span className="font-bold text-[#111113]">{submittedData.client_email}</span>
+                  <span className="font-bold text-[#111113] break-all block">{submittedData.client_email}</span>
                 </div>
               </div>
 
               {submittedData.project_scope && (
                 <div className="pt-3 border-t border-[#111113]/20">
                   <span className="uppercase text-[#111113]/60 block mb-1">Contract Scope Brief</span>
-                  <p className="font-sans text-xs text-[#111113] whitespace-pre-wrap">{submittedData.project_scope}</p>
+                  <p className="font-sans text-xs text-[#111113] whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{submittedData.project_scope}</p>
                 </div>
               )}
             </div>
@@ -401,8 +403,19 @@ function HireRequestContent() {
             <div className="grid sm:grid-cols-2 gap-6">
               {/* Expected Cost / Budget */}
               <div className="space-y-3">
-                <label className="block font-mono text-xs uppercase font-bold text-[#111113]">
-                  Expected Cost / Budget <span className="text-[#FF4D00]">*</span>
+                <label className="block font-mono text-xs uppercase font-bold text-[#111113] flex items-center justify-between gap-2">
+                  <span>
+                    Expected Cost / Budget <span className="text-[#FF4D00]">*</span>
+                  </span>
+                  <span
+                    className={`text-[10px] font-normal ${
+                      watchedExpectedCost.length >= HIRE_REQUEST_LIMITS.EXPECTED_COST_MAX
+                        ? 'text-[#FF4D00] font-bold'
+                        : 'text-[#111113]/55'
+                    }`}
+                  >
+                    {watchedExpectedCost.length}/{HIRE_REQUEST_LIMITS.EXPECTED_COST_MAX}
+                  </span>
                 </label>
                 <div className="relative">
                   <DollarSign className="w-4 h-4 absolute left-3.5 top-3 text-[#111113]/50" />
@@ -414,9 +427,13 @@ function HireRequestContent() {
                     className="w-full font-mono text-xs pl-10 pr-3.5 py-2.5 border-2 border-[#111113] bg-[#F8F7F4] text-[#111113] placeholder:text-[#111113]/40 focus:outline-hidden focus:border-[#FF4D00]"
                   />
                 </div>
-                {errors.expected_cost && (
+                {errors.expected_cost ? (
                   <p className="font-mono text-xs text-[#FF4D00] mt-1">
                     {errors.expected_cost.message}
+                  </p>
+                ) : (
+                  <p className="font-mono text-[10px] text-[#111113]/50">
+                    {HIRE_REQUEST_LIMITS.EXPECTED_COST_MIN}–{HIRE_REQUEST_LIMITS.EXPECTED_COST_MAX} characters. Hourly rate or monthly budget band.
                   </p>
                 )}
 
@@ -593,8 +610,19 @@ function HireRequestContent() {
 
               {/* Business Email */}
               <div>
-                <label className="block font-mono text-xs uppercase font-bold text-[#111113] mb-1">
-                  Work / Corporate Email <span className="text-[#FF4D00]">*</span>
+                <label className="block font-mono text-xs uppercase font-bold text-[#111113] mb-1 flex items-center justify-between gap-2">
+                  <span>
+                    Work / Corporate Email <span className="text-[#FF4D00]">*</span>
+                  </span>
+                  <span
+                    className={`text-[10px] font-normal ${
+                      watchedClientEmail.length >= HIRE_REQUEST_LIMITS.CLIENT_EMAIL_MAX
+                        ? 'text-[#FF4D00] font-bold'
+                        : 'text-[#111113]/55'
+                    }`}
+                  >
+                    {watchedClientEmail.length}/{HIRE_REQUEST_LIMITS.CLIENT_EMAIL_MAX}
+                  </span>
                 </label>
                 <div className="relative">
                   <Mail className="w-4 h-4 absolute left-3.5 top-3 text-[#111113]/50" />
@@ -606,9 +634,13 @@ function HireRequestContent() {
                     className="w-full font-mono text-xs pl-10 pr-3.5 py-2.5 border-2 border-[#111113] bg-[#F8F7F4] text-[#111113] placeholder:text-[#111113]/40 focus:outline-hidden focus:border-[#FF4D00]"
                   />
                 </div>
-                {errors.client_email && (
+                {errors.client_email ? (
                   <p className="font-mono text-xs text-[#FF4D00] mt-1">
                     {errors.client_email.message}
+                  </p>
+                ) : (
+                  <p className="font-mono text-[10px] text-[#111113]/50 mt-1">
+                    Max {HIRE_REQUEST_LIMITS.CLIENT_EMAIL_MAX} characters. Corporate domain preferred.
                   </p>
                 )}
               </div>

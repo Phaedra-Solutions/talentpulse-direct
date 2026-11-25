@@ -1,4 +1,9 @@
-import { HireRequest, HireRequestFormValues, HireRequestStatus } from '@/types/hire-request';
+import {
+  HireRequest,
+  HireRequestFilterStatus,
+  HireRequestFormValues,
+  HireRequestStatus,
+} from '@/types/hire-request';
 import { getSupabaseServerClient, isServerSupabaseConfigured } from '@/lib/supabase/server';
 import { getSupabaseBrowserClient, isSupabaseConfigured } from '@/lib/supabase/client';
 
@@ -114,6 +119,7 @@ const HIRE_REQUEST_SUMMARY_COLUMNS = [
 
 export interface HireRequestStatusStats {
   total: number;
+  activeCount: number;
   newCount: number;
   contactedCount: number;
   negotiatingCount: number;
@@ -133,11 +139,16 @@ export interface PaginatedHireRequestsResult {
 
 function applyHireRequestFilters(
   q: any,
-  status?: 'all' | HireRequestStatus,
+  status?: HireRequestFilterStatus,
   search?: string
 ) {
-  if (status && status !== 'all') {
-    q = q.eq('status', status);
+  const effectiveStatus = status || 'active';
+  if (effectiveStatus === 'active') {
+    q = q.neq('status', 'closed').neq('status', 'archived');
+  } else if (effectiveStatus === 'closed') {
+    q = q.in('status', ['closed', 'archived']);
+  } else if (effectiveStatus !== 'all') {
+    q = q.eq('status', effectiveStatus);
   }
   if (search && search.trim().length > 0) {
     const safe = search.trim().replace(/[,()%]/g, ' ').trim();
@@ -161,7 +172,7 @@ function applyHireRequestFilters(
 export async function getHireRequestsPaginated(filters?: {
   page?: number;
   limit?: number;
-  status?: 'all' | HireRequestStatus;
+  status?: HireRequestFilterStatus;
   search?: string;
   includeStats?: boolean;
   summary?: boolean;
@@ -170,7 +181,7 @@ export async function getHireRequestsPaginated(filters?: {
   const limit = filters?.limit && filters.limit > 0 ? Math.min(filters.limit, 100) : 25;
   const from = (page - 1) * limit;
   const to = from + limit - 1;
-  const statusFilter = filters?.status || 'all';
+  const statusFilter: HireRequestFilterStatus = filters?.status || 'active';
   const search = filters?.search || '';
 
   const supabase = getSupabaseClient();
@@ -188,7 +199,7 @@ export async function getHireRequestsPaginated(filters?: {
             supabase.from('hire_requests').select('id', { count: 'exact', head: true }).eq('status', 'contacted'),
             supabase.from('hire_requests').select('id', { count: 'exact', head: true }).eq('status', 'negotiating'),
             supabase.from('hire_requests').select('id', { count: 'exact', head: true }).eq('status', 'contract_signed'),
-            supabase.from('hire_requests').select('id', { count: 'exact', head: true }).eq('status', 'closed'),
+            supabase.from('hire_requests').select('id', { count: 'exact', head: true }).in('status', ['closed', 'archived']),
           ])
         : Promise.resolve(null);
 
@@ -210,14 +221,19 @@ export async function getHireRequestsPaginated(filters?: {
       const total = typeof listRes.count === 'number' ? listRes.count : rows.length;
 
       const stats: HireRequestStatusStats | undefined = statsRes
-        ? {
-            total: statsRes[0].count || 0,
-            newCount: statsRes[1].count || 0,
-            contactedCount: statsRes[2].count || 0,
-            negotiatingCount: statsRes[3].count || 0,
-            signedCount: statsRes[4].count || 0,
-            closedCount: statsRes[5].count || 0,
-          }
+        ? (() => {
+            const totalAll = statsRes[0].count || 0;
+            const closedAll = statsRes[5].count || 0;
+            return {
+              total: totalAll,
+              activeCount: Math.max(0, totalAll - closedAll),
+              newCount: statsRes[1].count || 0,
+              contactedCount: statsRes[2].count || 0,
+              negotiatingCount: statsRes[3].count || 0,
+              signedCount: statsRes[4].count || 0,
+              closedCount: closedAll,
+            };
+          })()
         : undefined;
 
       return {
@@ -244,17 +260,27 @@ export async function getHireRequestsPaginated(filters?: {
   // Fallback demo store only when Supabase is not configured
   let all = loadLocalHireRequests();
   const stats: HireRequestStatusStats | undefined = filters?.includeStats
-    ? {
-        total: all.length,
-        newCount: all.filter((r) => r.status === 'new').length,
-        contactedCount: all.filter((r) => r.status === 'contacted').length,
-        negotiatingCount: all.filter((r) => r.status === 'negotiating').length,
-        signedCount: all.filter((r) => r.status === 'contract_signed').length,
-        closedCount: all.filter((r) => r.status === 'closed').length,
-      }
+    ? (() => {
+        const closedAll = all.filter(
+          (r) => r.status === 'closed' || (r.status as string) === 'archived'
+        ).length;
+        return {
+          total: all.length,
+          activeCount: Math.max(0, all.length - closedAll),
+          newCount: all.filter((r) => r.status === 'new').length,
+          contactedCount: all.filter((r) => r.status === 'contacted').length,
+          negotiatingCount: all.filter((r) => r.status === 'negotiating').length,
+          signedCount: all.filter((r) => r.status === 'contract_signed').length,
+          closedCount: closedAll,
+        };
+      })()
     : undefined;
 
-  if (statusFilter !== 'all') {
+  if (statusFilter === 'active') {
+    all = all.filter((r) => r.status !== 'closed' && (r.status as string) !== 'archived');
+  } else if (statusFilter === 'closed') {
+    all = all.filter((r) => r.status === 'closed' || (r.status as string) === 'archived');
+  } else if (statusFilter !== 'all') {
     all = all.filter((r) => r.status === statusFilter);
   }
   if (search.trim()) {
@@ -284,7 +310,7 @@ export async function getHireRequestsPaginated(filters?: {
 }
 
 export async function exportHireRequestsList(filters?: {
-  status?: 'all' | HireRequestStatus;
+  status?: HireRequestFilterStatus;
   search?: string;
 }): Promise<{ requests: HireRequest[]; isLiveSupabase: boolean; error?: string }> {
   const supabase = getSupabaseClient();
@@ -296,7 +322,7 @@ export async function exportHireRequestsList(filters?: {
 
       while (offset < 10000) {
         let q = supabase.from('hire_requests').select('*');
-        q = applyHireRequestFilters(q, filters?.status || 'all', filters?.search || '');
+        q = applyHireRequestFilters(q, filters?.status || 'active', filters?.search || '');
         q = q.order('created_at', { ascending: false }).range(offset, offset + chunkSize - 1);
 
         const { data, error } = await q;

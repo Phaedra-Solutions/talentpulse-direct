@@ -23,7 +23,7 @@ Unlike traditional applicant tracking systems (ATS), TalentPulse operates on an 
 │                                                                             │
 │  [PUBLIC INTAKE & EXPERIENCE]             [RECRUITER & ADMIN SUITE]         │
 │  • Landing & Talent Showcase (/)          • Command Dashboard (/admin/...)  │
-│  • Dynamic Track Pages (/roles/[slug])    • Candidate Table & Kanban        │
+│  • Dynamic Track Pages (/roles/[slug])    • Candidate Table & Card Views    │
 │  • Public Candidate Portal (/apply)       • Candidate Dossier & PDF Viewer  │
 │  • Client Hire Intake (/hire)             • Client Hire Requests Manager    │
 │  • Candidate Self-Service (/candidate)    • Dynamic Roles & Tech Admin      │
@@ -72,11 +72,11 @@ Unlike traditional applicant tracking systems (ATS), TalentPulse operates on an 
 ### Domain 3: Client Hire Request Portal (`/hire`)
 *   **3.1 Enterprise Staffing Intake & Strict Validations**:
     *   Role requirement selection mapped to active engineering tracks using lightweight summary pagination.
-    *   Budget / expected monthly or project cost band selector (`2–80` chars) and target start timeline.
-    *   Client identification with shared client + server Zod limits (`HIRE_REQUEST_LIMITS`), `maxLength` guards, and live character counters:
-        *   **Business / Company Name (`2–120` chars)**: Valid corporate characters, minimum alphanumeric content, and repeated-character protection.
-        *   **Contact Person Full Name (`2–100` chars)**: Letters, spaces, hyphens, periods, and apostrophes only (no numbers/symbols), minimum 2 letters, and repeated-character guard.
-        *   **Corporate Email (`<= 160` chars)**, Phone Number, Country, and optional **Contract Scope & Technical Requirements** (optional, or `20–3,000` chars when provided, rejecting HTML/script tags).
+    *   Budget / expected monthly or project cost band selector (`2–50` chars) and target start timeline (`2–60` chars).
+    *   Client identification with shared client + server Zod limits (`HIRE_REQUEST_LIMITS`), `maxLength` guards, anti-gibberish/unbroken-token validation, and live character counters:
+        *   **Business / Company Name (`2–80` chars)**: Valid corporate characters, minimum alphanumeric content, unbroken token limit (`40` chars), and repeated-character/loop protection.
+        *   **Contact Person Full Name (`2–60` chars)**: Letters, spaces, hyphens, periods, and apostrophes only (no numbers/symbols), minimum 2 letters, unbroken token limit (`35` chars), and repeated-character guard.
+        *   **Corporate Email (`<= 120` chars)**, Phone Number (`6–24` chars), Country (`2–80` chars), and optional **Contract Scope & Technical Requirements** (`20–2,000` chars when provided, rejecting HTML/script tags and unbroken gibberish tokens).
 *   **3.2 Dual-Consent Commercial Gating**:
     *   Separate explicit checkboxes for Terms of Use and Privacy Policy with persisted consent timestamps.
 *   **3.3 Instant Dispatch (`POST /api/hire-requests`)**:
@@ -95,9 +95,11 @@ Unlike traditional applicant tracking systems (ATS), TalentPulse operates on an 
 ---
 
 ### Domain 5: Recruiter Command Center & Resume Storage (`/admin/dashboard`)
-*   **5.1 High-Density Candidate Views**:
-    *   **Table View (`components/CandidateTable.tsx`)**: Sortable, searchable pipeline grid displaying role track badges, availability, overlap hours, English proficiency, and cache-busted `PDF` actions.
-    *   **Kanban Pipeline View**: Lifecycle stage tracking across `new`, `vetted`, `interviewing`, `assigned`, and `on_hold`.
+*   **5.1 High-Density Candidate Views & Active Stage Analytics**:
+    *   **Analytics & Active Stage Statistics**: Dual Brutalist KPI bars displaying active pool metrics and clickable pipeline stage counts (`New Lead`, `Vetted`, `Interviewing`, `Assigned`, `On Hold`) excluding `Rejected / Archived` candidates.
+    *   **Default Exclusion of Rejected / Archived Candidates**: Candidates marked `Rejected / Archived` (`rejected`) are excluded from the default listing and active statistics, and are accessible only by explicitly selecting `Rejected / Archived` from the **Pipeline Stage** dropdown filter.
+    *   **Table View (`components/CandidateTable.tsx`)**: Sortable, searchable pipeline grid displaying role track badges, availability, overlap hours, English proficiency, pipeline stage transitions, and cache-busted `PDF` actions.
+    *   **Card Dossier Grid (`components/CandidateCard.tsx`)**: Responsive card directory displaying candidate summaries, target timezones, tech stack tags, and quick stage badges.
 *   **5.2 Candidate Detail Dossier (`components/CandidateDetailDrawer.tsx`)**:
     *   Synchronized stage transitions and internal evaluation notes (`PATCH /api/candidates/[id]` with signed admin headers).
     *   **Technical Resume / Artifact Preview**: Displays attached resume filenames and private Spaces object paths paired with a cache-busted `View PDF` link (`&v={updated_at}`).
@@ -117,10 +119,10 @@ Unlike traditional applicant tracking systems (ATS), TalentPulse operates on an 
 ### Domain 6: Customer Hire Requests Manager (`/admin/hire-requests`)
 *   **6.1 Authenticated API-Backed Sales Pipeline**:
     *   All listing, review updates, deletion, and export actions route through authenticated `/api/hire-requests` and `/api/hire-requests/[id]` endpoints (server-side `service_role` Supabase access gated by `requireAdminAuth` and `canAccessHireRequests`), avoiding browser `anon` RLS blocking and surfacing explicit DB error/retry banners.
-    *   Tracks leads across `new`, `contacted`, `negotiating`, `contract_signed`, and `closed` stages with offline consultation notes.
-*   **6.2 Server-Side Pagination, Lazy Dossier Hydration & Export**:
-    *   SQL-backed pagination (`15 / 25 / 50 / 100` rows per page), debounced multi-column search, clickable KPI status counters, and composite `(status, created_at DESC)` indexing.
-    *   List queries fetch lightweight summary columns and lazy-load full `project_scope` via `GET /api/hire-requests/[id]` when opening the Review Dossier.
+    *   Tracks active leads across `new`, `contacted`, `negotiating`, and `contract_signed`, while hiding `closed` / `archived` requests from the default view unless explicitly selected from the status dropdown.
+*   **6.2 Server-Side Pagination, Fixed-Layout Table & Export**:
+    *   SQL-backed pagination (`15 / 25 / 50 / 100` rows per page), debounced multi-column search, fixed-width (`table-fixed`) responsive columns with graceful truncation and wrapping, clickable KPI status counters, and composite `(status, created_at DESC)` indexing.
+    *   List queries fetch lightweight summary columns and lazy-load full `project_scope` via `GET /api/hire-requests/[id]` when opening the Review Dossier (with `offline_notes` validated up to `2,000` chars).
     *   Chunked 500-row server export (`GET /api/hire-requests?export=true`) generates complete CSV downloads across all matching leads (gated to `super_admin` in UI controls).
 
 ---

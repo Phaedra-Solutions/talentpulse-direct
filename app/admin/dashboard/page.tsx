@@ -6,11 +6,11 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { 
   Candidate, 
   CandidateFilters, 
-  PipelineStage, 
-  getPipelineStageMeta 
+  PipelineStage
 } from '@/types/candidate';
 import { 
   CandidateKpiStats,
+  CandidateStageStats,
   getCandidateById,
   getCandidatesPaginated, 
   updateCandidateStageAndNotesRecord 
@@ -79,12 +79,20 @@ function AdminDashboardContent() {
     aiEngineers: 0,
     mobileAndArchs: 0,
   });
-  const [stageCounts, setStageCounts] = useState<Record<string, number>>({});
+  const [stageStats, setStageStats] = useState<CandidateStageStats>({
+    activeTotal: 0,
+    new: 0,
+    vetted: 0,
+    interviewing: 0,
+    assigned: 0,
+    on_hold: 0,
+    rejected: 0,
+  });
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [isExporting, setIsExporting] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isLiveSupabase, setIsLiveSupabase] = useState(false);
-  const [viewMode, setViewMode] = useState<'table' | 'cards' | 'kanban'>('table');
+  const [viewMode, setViewMode] = useState<'table' | 'cards'>('table');
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedCandidate, setSelectedCandidate] = useState<Candidate | null>(null);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
@@ -197,7 +205,7 @@ function AdminDashboardContent() {
         setTotalCandidates(result.total);
         setIsLiveSupabase(result.isLiveSupabase);
         if (result.stats) setKpis(result.stats);
-        if (result.stageCounts) setStageCounts(result.stageCounts);
+        if (result.stageStats) setStageStats(result.stageStats);
       }
     } catch (err: any) {
       console.error(err);
@@ -459,7 +467,7 @@ function AdminDashboardContent() {
           setTotalCandidates(result.total);
           setIsLiveSupabase(result.isLiveSupabase);
           if (result.stats) setKpis(result.stats);
-          if (result.stageCounts) setStageCounts(result.stageCounts);
+          if (result.stageStats) setStageStats(result.stageStats);
         }
         setIsLoading(false);
       })
@@ -591,25 +599,15 @@ function AdminDashboardContent() {
 
   // Stage change handler
   const handleStageChange = async (id: string, stage: PipelineStage, notes: string) => {
-    const existing = candidates.find((c) => c.id === id);
-    const previousStage = existing?.pipeline_stage;
-    await updateCandidateStageAndNotesRecord(id, stage, notes);
-    setCandidates((prev) =>
-      prev.map((c) => (c.id === id ? { ...c, pipeline_stage: stage, internal_notes: notes, updated_at: new Date().toISOString() } : c))
-    );
-    if (previousStage && previousStage !== stage) {
-      setStageCounts((prev) => {
-        if (!Object.keys(prev).length) return prev;
-        return {
-          ...prev,
-          [previousStage]: Math.max(0, (prev[previousStage] ?? 1) - 1),
-          [stage]: (prev[stage] ?? 0) + 1,
-        };
-      });
+    const res = await updateCandidateStageAndNotesRecord(id, stage, notes);
+    if (!res.success && res.error) {
+      setFetchError(res.error);
+      return;
     }
     if (selectedCandidate && selectedCandidate.id === id) {
       setSelectedCandidate((prev) => (prev ? { ...prev, pipeline_stage: stage, internal_notes: notes } : null));
     }
+    await reloadCandidates();
   };
 
   // Sort change handler
@@ -742,8 +740,6 @@ function AdminDashboardContent() {
       setIsExporting(false);
     }
   };
-
-  const kanbanStages: PipelineStage[] = ['new', 'vetted', 'interviewing', 'assigned', 'on_hold'];
 
   // Render loading while verifying session
   if (!hrUser) {
@@ -980,42 +976,137 @@ function AdminDashboardContent() {
           </div>
         </div>
 
-        {/* HR Analytics KPI Header - Brutalist Grid */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-px bg-[#111113] border-2 border-[#111113]">
-          <div className="bg-[#F8F7F4] p-4">
-            <div className="font-mono text-[10px] uppercase tracking-wider text-[#111113]/60 mb-1">[TOTAL]</div>
-            <div className="font-syne font-extrabold text-2xl text-[#111113]">{kpis.total}</div>
-            <span className="font-mono text-[10px] text-[#111113]/60 uppercase">Dossiers</span>
+        {/* HR Analytics KPI Header & Active Stage Statistics (Excluding Rejected / Archived) */}
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-px bg-[#111113] border-2 border-[#111113]">
+            <div className="bg-[#F8F7F4] p-4">
+              <div className="font-mono text-[10px] uppercase tracking-wider text-[#111113]/60 mb-1">[TOTAL]</div>
+              <div className="font-syne font-extrabold text-2xl text-[#111113]">{kpis.total}</div>
+              <span className="font-mono text-[10px] text-[#111113]/60 uppercase">Active Dossiers</span>
+            </div>
+
+            <div className="bg-[#F8F7F4] p-4">
+              <div className="font-mono text-[10px] uppercase tracking-wider text-[#111113]/60 mb-1">[AVAILABLE]</div>
+              <div className="font-syne font-extrabold text-2xl text-[#FF4D00]">{kpis.availableNow}</div>
+              <span className="font-mono text-[10px] text-[#111113]/60 uppercase">Immediate</span>
+            </div>
+
+            <div className="bg-[#F8F7F4] p-4">
+              <div className="font-mono text-[10px] uppercase tracking-wider text-[#111113]/60 mb-1">[VIDEO]</div>
+              <div className="font-syne font-extrabold text-2xl text-[#111113]">{kpis.withVideo}</div>
+              <span className="font-mono text-[10px] text-[#111113]/60 uppercase">Pitches</span>
+            </div>
+
+            <div className="bg-[#F8F7F4] p-4">
+              <div className="font-mono text-[10px] uppercase tracking-wider text-[#111113]/60 mb-1">[RESUMES]</div>
+              <div className="font-syne font-extrabold text-2xl text-[#111113]">{kpis.withResume}</div>
+              <span className="font-mono text-[10px] text-[#111113]/60 uppercase">PDF CVs</span>
+            </div>
+
+            <div className="bg-[#F8F7F4] p-4">
+              <div className="font-mono text-[10px] uppercase tracking-wider text-[#111113]/60 mb-1">[AI / LLM]</div>
+              <div className="font-syne font-extrabold text-2xl text-[#111113]">{kpis.aiEngineers}</div>
+              <span className="font-mono text-[10px] text-[#111113]/60 uppercase">Engineers</span>
+            </div>
+
+            <div className="bg-[#F8F7F4] p-4">
+              <div className="font-mono text-[10px] uppercase tracking-wider text-[#111113]/60 mb-1">[MOBILE/ARCH]</div>
+              <div className="font-syne font-extrabold text-2xl text-[#111113]">{kpis.mobileAndArchs}</div>
+              <span className="font-mono text-[10px] text-[#111113]/60 uppercase">Specialists</span>
+            </div>
           </div>
 
-          <div className="bg-[#F8F7F4] p-4">
-            <div className="font-mono text-[10px] uppercase tracking-wider text-[#111113]/60 mb-1">[AVAILABLE]</div>
-            <div className="font-syne font-extrabold text-2xl text-[#FF4D00]">{kpis.availableNow}</div>
-            <span className="font-mono text-[10px] text-[#111113]/60 uppercase">Immediate</span>
-          </div>
+          {/* Pipeline Stage Statistics (Excludes Rejected / Archived) */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-px bg-[#111113] border-2 border-[#111113]">
+            <button
+              type="button"
+              onClick={() => setFilters((prev) => ({ ...prev, pipelineStage: 'all' }))}
+              className={`text-left p-4 transition ${
+                filters.pipelineStage === 'all'
+                  ? 'bg-white ring-2 ring-inset ring-[#FF4D00]'
+                  : 'bg-[#F8F7F4] hover:bg-white'
+              }`}
+              title="Show all active stages (excluding Rejected / Archived)"
+            >
+              <div className="font-mono text-[10px] uppercase tracking-wider text-[#111113]/60 mb-1">[ACTIVE STAGES]</div>
+              <div className="font-syne font-extrabold text-2xl text-[#111113]">{stageStats.activeTotal}</div>
+              <span className="font-mono text-[10px] text-[#111113]/60 uppercase">Excl. Rejected</span>
+            </button>
 
-          <div className="bg-[#F8F7F4] p-4">
-            <div className="font-mono text-[10px] uppercase tracking-wider text-[#111113]/60 mb-1">[VIDEO]</div>
-            <div className="font-syne font-extrabold text-2xl text-[#111113]">{kpis.withVideo}</div>
-            <span className="font-mono text-[10px] text-[#111113]/60 uppercase">Pitches</span>
-          </div>
+            <button
+              type="button"
+              onClick={() => setFilters((prev) => ({ ...prev, pipelineStage: 'new' }))}
+              className={`text-left p-4 transition ${
+                filters.pipelineStage === 'new'
+                  ? 'bg-white ring-2 ring-inset ring-[#FF4D00]'
+                  : 'bg-[#F8F7F4] hover:bg-white'
+              }`}
+              title="Filter by New Lead stage"
+            >
+              <div className="font-mono text-[10px] uppercase tracking-wider text-[#FF4D00] font-bold mb-1">[NEW LEAD]</div>
+              <div className="font-syne font-extrabold text-2xl text-[#FF4D00]">{stageStats.new}</div>
+              <span className="font-mono text-[10px] text-[#111113]/60 uppercase">Incoming</span>
+            </button>
 
-          <div className="bg-[#F8F7F4] p-4">
-            <div className="font-mono text-[10px] uppercase tracking-wider text-[#111113]/60 mb-1">[RESUMES]</div>
-            <div className="font-syne font-extrabold text-2xl text-[#111113]">{kpis.withResume}</div>
-            <span className="font-mono text-[10px] text-[#111113]/60 uppercase">PDF CVs</span>
-          </div>
+            <button
+              type="button"
+              onClick={() => setFilters((prev) => ({ ...prev, pipelineStage: 'vetted' }))}
+              className={`text-left p-4 transition ${
+                filters.pipelineStage === 'vetted'
+                  ? 'bg-white ring-2 ring-inset ring-[#FF4D00]'
+                  : 'bg-[#F8F7F4] hover:bg-white'
+              }`}
+              title="Filter by Technically Vetted stage"
+            >
+              <div className="font-mono text-[10px] uppercase tracking-wider text-indigo-700 font-bold mb-1">[VETTED]</div>
+              <div className="font-syne font-extrabold text-2xl text-indigo-800">{stageStats.vetted}</div>
+              <span className="font-mono text-[10px] text-[#111113]/60 uppercase">Pre-Screened</span>
+            </button>
 
-          <div className="bg-[#F8F7F4] p-4">
-            <div className="font-mono text-[10px] uppercase tracking-wider text-[#111113]/60 mb-1">[AI / LLM]</div>
-            <div className="font-syne font-extrabold text-2xl text-[#111113]">{kpis.aiEngineers}</div>
-            <span className="font-mono text-[10px] text-[#111113]/60 uppercase">Engineers</span>
-          </div>
+            <button
+              type="button"
+              onClick={() => setFilters((prev) => ({ ...prev, pipelineStage: 'interviewing' }))}
+              className={`text-left p-4 transition ${
+                filters.pipelineStage === 'interviewing'
+                  ? 'bg-white ring-2 ring-inset ring-[#FF4D00]'
+                  : 'bg-[#F8F7F4] hover:bg-white'
+              }`}
+              title="Filter by Client Interviewing stage"
+            >
+              <div className="font-mono text-[10px] uppercase tracking-wider text-amber-700 font-bold mb-1">[INTERVIEWING]</div>
+              <div className="font-syne font-extrabold text-2xl text-amber-800">{stageStats.interviewing}</div>
+              <span className="font-mono text-[10px] text-[#111113]/60 uppercase">Client Rounds</span>
+            </button>
 
-          <div className="bg-[#F8F7F4] p-4">
-            <div className="font-mono text-[10px] uppercase tracking-wider text-[#111113]/60 mb-1">[MOBILE/ARCH]</div>
-            <div className="font-syne font-extrabold text-2xl text-[#111113]">{kpis.mobileAndArchs}</div>
-            <span className="font-mono text-[10px] text-[#111113]/60 uppercase">Specialists</span>
+            <button
+              type="button"
+              onClick={() => setFilters((prev) => ({ ...prev, pipelineStage: 'assigned' }))}
+              className={`text-left p-4 transition ${
+                filters.pipelineStage === 'assigned'
+                  ? 'bg-white ring-2 ring-inset ring-[#FF4D00]'
+                  : 'bg-[#F8F7F4] hover:bg-white'
+              }`}
+              title="Filter by Active on Project stage"
+            >
+              <div className="font-mono text-[10px] uppercase tracking-wider text-emerald-700 font-bold mb-1">[ASSIGNED]</div>
+              <div className="font-syne font-extrabold text-2xl text-emerald-800">{stageStats.assigned}</div>
+              <span className="font-mono text-[10px] text-[#111113]/60 uppercase">On Project</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setFilters((prev) => ({ ...prev, pipelineStage: 'on_hold' }))}
+              className={`text-left p-4 transition ${
+                filters.pipelineStage === 'on_hold'
+                  ? 'bg-white ring-2 ring-inset ring-[#FF4D00]'
+                  : 'bg-[#F8F7F4] hover:bg-white'
+              }`}
+              title="Filter by On Hold / Paused stage"
+            >
+              <div className="font-mono text-[10px] uppercase tracking-wider text-rose-700 font-bold mb-1">[ON HOLD]</div>
+              <div className="font-syne font-extrabold text-2xl text-rose-800">{stageStats.on_hold}</div>
+              <span className="font-mono text-[10px] text-[#111113]/60 uppercase">Paused</span>
+            </button>
           </div>
         </div>
 
@@ -1060,18 +1151,6 @@ function AdminDashboardContent() {
               >
                 <LayoutGrid className="w-3.5 h-3.5" />
                 <span>Cards</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setViewMode('kanban')}
-                className={`px-3 py-2 border-2 border-[#111113] uppercase font-bold transition flex items-center gap-1.5 ${
-                  viewMode === 'kanban'
-                    ? 'bg-[#111113] text-[#F8F7F4]'
-                    : 'bg-white text-[#111113] hover:bg-[#F8F7F4]'
-                }`}
-                title="Pipeline stages board"
-              >
-                <span>Kanban</span>
               </button>
             </div>
           </div>
@@ -1175,12 +1254,13 @@ function AdminDashboardContent() {
                 onChange={(e) => setFilters((prev) => ({ ...prev, pipelineStage: e.target.value }))}
                 className="w-full text-xs py-1.5 px-2 border-2 border-[#111113] bg-[#F8F7F4] text-[#111113]"
               >
-                <option value="all">All Stages</option>
-                <option value="new">New Lead</option>
-                <option value="vetted">Vetted</option>
-                <option value="interviewing">Interviewing</option>
-                <option value="assigned">Assigned</option>
-                <option value="on_hold">On Hold</option>
+                <option value="all">All Active Stages ({stageStats.activeTotal})</option>
+                <option value="new">New Lead ({stageStats.new})</option>
+                <option value="vetted">Vetted ({stageStats.vetted})</option>
+                <option value="interviewing">Interviewing ({stageStats.interviewing})</option>
+                <option value="assigned">Assigned ({stageStats.assigned})</option>
+                <option value="on_hold">On Hold ({stageStats.on_hold})</option>
+                <option value="rejected">Rejected / Archived ({stageStats.rejected})</option>
               </select>
             </div>
           </div>
@@ -1207,7 +1287,7 @@ function AdminDashboardContent() {
           </div>
         )}
 
-        {/* Content Area: Table View, Cards View, or Kanban View */}
+        {/* Content Area: Table View or Cards View */}
         {isLoading && candidates.length === 0 ? (
           <div className="p-12 bg-white border-2 border-[#111113] shadow-[4px_4px_0px_0px_#111113] flex flex-col items-center justify-center gap-3 font-mono text-xs">
             <div className="w-8 h-8 border-4 border-[#111113] border-t-[#FF4D00] animate-spin" />
@@ -1247,52 +1327,6 @@ function AdminDashboardContent() {
                   </div>
                 )}
                 {renderPagination()}
-              </div>
-            )}
-
-            {viewMode === 'kanban' && (
-              /* Kanban Board */
-              <div className="grid grid-cols-1 md:grid-cols-5 gap-4 overflow-x-auto pb-4">
-                {kanbanStages.map((stage) => {
-                  const stageMeta = getPipelineStageMeta(stage);
-                  const stageCandidates = candidates.filter((c) => c.pipeline_stage === stage);
-                  const totalInStage = stageCounts[stage] ?? stageCandidates.length;
-
-                  return (
-                    <div 
-                      key={stage}
-                      className="bg-white border-2 border-[#111113] p-4 flex flex-col min-w-[260px] shadow-[4px_4px_0px_0px_#111113]"
-                    >
-                      {/* Column Header */}
-                      <div className="flex items-center justify-between pb-3 mb-3 border-b-2 border-[#111113] font-mono text-xs">
-                        <span className="font-bold uppercase tracking-wider text-[#111113]">
-                          [{stageMeta.label}]
-                        </span>
-                        <span className="font-bold text-[#FF4D00]" title={totalInStage > stageCandidates.length ? `Showing latest ${stageCandidates.length} of ${totalInStage}` : undefined}>
-                          {totalInStage}
-                        </span>
-                      </div>
-
-                      {/* Cards in Column */}
-                      <div className="space-y-3 flex-1 overflow-y-auto max-h-[700px]">
-                        {stageCandidates.length === 0 ? (
-                          <div className="py-8 text-center font-mono text-xs text-[#111113]/50 border-2 border-dashed border-[#111113]/30 uppercase">
-                            [No candidates in stage]
-                          </div>
-                        ) : (
-                          stageCandidates.map((c) => (
-                            <CandidateCard
-                              key={c.id}
-                              candidate={c}
-                              compact
-                              onSelect={handleOpenCandidateDrawer}
-                            />
-                          ))
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
               </div>
             )}
           </>

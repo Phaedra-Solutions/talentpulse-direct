@@ -4,10 +4,23 @@ import {
   exportHireRequestsList,
   createHireRequest,
 } from '@/lib/hire-request-store';
-import { hireRequestFormSchema, HireRequestStatus } from '@/types/hire-request';
+import {
+  hireRequestFormSchema,
+  HireRequestFilterStatus,
+} from '@/types/hire-request';
 import { getRolesPaginated } from '@/lib/roles-tech-store';
 import { requireAdminAuth } from '@/lib/auth/server-auth';
 import { canAccessHireRequests } from '@/lib/auth/permissions';
+
+const ALLOWED_HIRE_STATUS_FILTERS = new Set<HireRequestFilterStatus>([
+  'active',
+  'all',
+  'new',
+  'contacted',
+  'negotiating',
+  'contract_signed',
+  'closed',
+]);
 
 export async function GET(request: NextRequest) {
   try {
@@ -16,7 +29,12 @@ export async function GET(request: NextRequest) {
     if (auth.errorResponse) return auth.errorResponse;
 
     const { searchParams } = new URL(request.url);
-    const statusParam = (searchParams.get('status') || 'all') as 'all' | HireRequestStatus;
+    const rawStatus = searchParams.get('status') || 'active';
+    const statusParam: HireRequestFilterStatus = ALLOWED_HIRE_STATUS_FILTERS.has(
+      rawStatus as HireRequestFilterStatus
+    )
+      ? (rawStatus as HireRequestFilterStatus)
+      : 'active';
     const search = searchParams.get('search') || searchParams.get('query') || '';
     const isExport = searchParams.get('export') === 'true';
 

@@ -112,10 +112,16 @@ function toDbCandidateData(candidate: any) {
   return data;
 }
 
+function isMissingRejectedEnumError(err: any): boolean {
+  if (!err) return false;
+  return err.code === '22P02' || String(err.message || '').includes('invalid input value for enum');
+}
+
 // Helper to format Supabase row back to application Candidate model
 function fromDbCandidate(c: any): Candidate {
   let role = c.primary_role;
   let notes = c.internal_notes || '';
+  let stage = c.pipeline_stage;
 
   const roleMatch = notes.match(/\[Role:\s*([\w-]+)\]/);
   if (roleMatch && roleMatch[1]) {
@@ -124,9 +130,15 @@ function fromDbCandidate(c: any): Candidate {
     role = 'full_stack';
   }
 
+  if (notes.includes('[Stage: rejected]')) {
+    stage = 'rejected';
+    notes = notes.replace(/\[Stage:\s*rejected\]\s*/g, '').trim();
+  }
+
   return {
     ...c,
     primary_role: role,
+    pipeline_stage: stage,
     internal_notes: notes,
   };
 }
@@ -179,7 +191,8 @@ function applyCandidateFilters(
     email?: string | null;
     search?: string | null;
     matchedTechNames?: string[];
-  }
+  },
+  useLegacyStageFallback = false
 ) {
   const {
     primaryRole,
@@ -214,8 +227,25 @@ function applyCandidateFilters(
     query = query.eq('availability_status', availabilityStatus);
   }
 
-  if (pipelineStage && pipelineStage !== 'all') {
-    query = query.eq('pipeline_stage', pipelineStage);
+  if (useLegacyStageFallback) {
+    if (pipelineStage === 'rejected') {
+      query = query.ilike('internal_notes', '%[Stage: rejected]%');
+    } else if (pipelineStage && pipelineStage !== 'all') {
+      query = query
+        .eq('pipeline_stage', pipelineStage)
+        .or('internal_notes.is.null,internal_notes.not.ilike.%[Stage: rejected]%');
+    } else {
+      query = query.or('internal_notes.is.null,internal_notes.not.ilike.%[Stage: rejected]%');
+    }
+  } else {
+    if (pipelineStage === 'rejected') {
+      query = query.eq('pipeline_stage', 'rejected');
+    } else if (pipelineStage && pipelineStage !== 'all') {
+      query = query.eq('pipeline_stage', pipelineStage);
+    } else {
+      // By default, exclude rejected / archived candidates from active listing
+      query = query.neq('pipeline_stage', 'rejected');
+    }
   }
 
   if (englishProficiency && englishProficiency !== 'all') {
@@ -294,7 +324,6 @@ export async function GET(req: NextRequest) {
   const sortAscending = searchParams.get('sortOrder') === 'asc';
   const includeStats = searchParams.get('includeStats') === 'true';
   const isExport = searchParams.get('export') === 'true';
-  const view = searchParams.get('view');
 
   const session = getAuthenticatedAdmin(req);
   const isAdmin = Boolean(session && canAccessCandidatePipeline(session.role));
@@ -386,8 +415,8 @@ export async function GET(req: NextRequest) {
         matchedTechNames,
       };
 
-      // Helper for KPI counts using head:true (0 rows transferred!)
-      const fetchKpiStats = async () => {
+      // Helper for active KPI & stage counts using head:true (0 rows transferred, excluding rejected/archived)
+      const fetchDashboardStats = async () => {
         const [
           totalRes,
           availRes,
@@ -396,23 +425,104 @@ export async function GET(req: NextRequest) {
           aiRes,
           mobileRes,
           archRes,
+          newRes,
+          vettedRes,
+          interviewingRes,
+          assignedRes,
+          onHoldRes,
+          rejectedRes,
         ] = await Promise.all([
-          supabase.from('candidates').select('id', { count: 'exact', head: true }),
-          supabase.from('candidates').select('id', { count: 'exact', head: true }).eq('availability_status', 'available_now'),
-          supabase.from('candidates').select('id', { count: 'exact', head: true }).not('video_pitch_url', 'is', null).neq('video_pitch_url', ''),
-          supabase.from('candidates').select('id', { count: 'exact', head: true }).not('resume_url', 'is', null).neq('resume_url', ''),
-          supabase.from('candidates').select('id', { count: 'exact', head: true }).eq('primary_role', 'ai_engineer'),
-          supabase.from('candidates').select('id', { count: 'exact', head: true }).or('primary_role.eq.mobile_app_developer,internal_notes.ilike.%[Role: mobile_app_developer]%'),
-          supabase.from('candidates').select('id', { count: 'exact', head: true }).or('primary_role.eq.solutions_architect,internal_notes.ilike.%[Role: solutions_architect]%'),
+          supabase.from('candidates').select('id', { count: 'exact', head: true }).neq('pipeline_stage', 'rejected'),
+          supabase.from('candidates').select('id', { count: 'exact', head: true }).neq('pipeline_stage', 'rejected').eq('availability_status', 'available_now'),
+          supabase.from('candidates').select('id', { count: 'exact', head: true }).neq('pipeline_stage', 'rejected').not('video_pitch_url', 'is', null).neq('video_pitch_url', ''),
+          supabase.from('candidates').select('id', { count: 'exact', head: true }).neq('pipeline_stage', 'rejected').not('resume_url', 'is', null).neq('resume_url', ''),
+          supabase.from('candidates').select('id', { count: 'exact', head: true }).neq('pipeline_stage', 'rejected').eq('primary_role', 'ai_engineer'),
+          supabase.from('candidates').select('id', { count: 'exact', head: true }).neq('pipeline_stage', 'rejected').or('primary_role.eq.mobile_app_developer,internal_notes.ilike.%[Role: mobile_app_developer]%'),
+          supabase.from('candidates').select('id', { count: 'exact', head: true }).neq('pipeline_stage', 'rejected').or('primary_role.eq.solutions_architect,internal_notes.ilike.%[Role: solutions_architect]%'),
+          supabase.from('candidates').select('id', { count: 'exact', head: true }).eq('pipeline_stage', 'new'),
+          supabase.from('candidates').select('id', { count: 'exact', head: true }).eq('pipeline_stage', 'vetted'),
+          supabase.from('candidates').select('id', { count: 'exact', head: true }).eq('pipeline_stage', 'interviewing'),
+          supabase.from('candidates').select('id', { count: 'exact', head: true }).eq('pipeline_stage', 'assigned'),
+          supabase.from('candidates').select('id', { count: 'exact', head: true }).eq('pipeline_stage', 'on_hold'),
+          supabase.from('candidates').select('id', { count: 'exact', head: true }).eq('pipeline_stage', 'rejected'),
         ]);
 
+        // Graceful fallback if enum migration has not been run yet on DB
+        if (isMissingRejectedEnumError(totalRes.error) || isMissingRejectedEnumError(rejectedRes.error)) {
+          const fallbackNotRejected = 'internal_notes.is.null,internal_notes.not.ilike.%[Stage: rejected]%';
+          const [
+            fTotal,
+            fAvail,
+            fVideo,
+            fResume,
+            fAi,
+            fMobile,
+            fArch,
+            fRejected,
+          ] = await Promise.all([
+            supabase.from('candidates').select('id', { count: 'exact', head: true }).or(fallbackNotRejected),
+            supabase.from('candidates').select('id', { count: 'exact', head: true }).eq('availability_status', 'available_now').or(fallbackNotRejected),
+            supabase.from('candidates').select('id', { count: 'exact', head: true }).not('video_pitch_url', 'is', null).neq('video_pitch_url', '').or(fallbackNotRejected),
+            supabase.from('candidates').select('id', { count: 'exact', head: true }).not('resume_url', 'is', null).neq('resume_url', '').or(fallbackNotRejected),
+            supabase.from('candidates').select('id', { count: 'exact', head: true }).eq('primary_role', 'ai_engineer').or(fallbackNotRejected),
+            supabase.from('candidates').select('id', { count: 'exact', head: true }).or('primary_role.eq.mobile_app_developer,internal_notes.ilike.%[Role: mobile_app_developer]%'),
+            supabase.from('candidates').select('id', { count: 'exact', head: true }).or('primary_role.eq.solutions_architect,internal_notes.ilike.%[Role: solutions_architect]%'),
+            supabase.from('candidates').select('id', { count: 'exact', head: true }).ilike('internal_notes', '%[Stage: rejected]%'),
+          ]);
+
+          const rejectedCount = fRejected.count || 0;
+          const newCount = newRes.count || 0;
+          const vettedCount = vettedRes.count || 0;
+          const interviewingCount = interviewingRes.count || 0;
+          const assignedCount = assignedRes.count || 0;
+          const onHoldCount = Math.max(0, (onHoldRes.count || 0) - rejectedCount);
+
+          return {
+            stats: {
+              total: fTotal.count || 0,
+              availableNow: fAvail.count || 0,
+              withVideo: fVideo.count || 0,
+              withResume: fResume.count || 0,
+              aiEngineers: fAi.count || 0,
+              mobileAndArchs: (fMobile.count || 0) + (fArch.count || 0),
+            },
+            stageStats: {
+              activeTotal: newCount + vettedCount + interviewingCount + assignedCount + onHoldCount,
+              new: newCount,
+              vetted: vettedCount,
+              interviewing: interviewingCount,
+              assigned: assignedCount,
+              on_hold: onHoldCount,
+              rejected: rejectedCount,
+            },
+          };
+        }
+
+        const newCount = newRes.count || 0;
+        const vettedCount = vettedRes.count || 0;
+        const interviewingCount = interviewingRes.count || 0;
+        const assignedCount = assignedRes.count || 0;
+        const onHoldCount = onHoldRes.count || 0;
+        const rejectedCount = rejectedRes.count || 0;
+
         return {
-          total: totalRes.count || 0,
-          availableNow: availRes.count || 0,
-          withVideo: videoRes.count || 0,
-          withResume: resumeRes.count || 0,
-          aiEngineers: aiRes.count || 0,
-          mobileAndArchs: (mobileRes.count || 0) + (archRes.count || 0),
+          stats: {
+            total: totalRes.count || 0,
+            availableNow: availRes.count || 0,
+            withVideo: videoRes.count || 0,
+            withResume: resumeRes.count || 0,
+            aiEngineers: aiRes.count || 0,
+            mobileAndArchs: (mobileRes.count || 0) + (archRes.count || 0),
+          },
+          stageStats: {
+            activeTotal: newCount + vettedCount + interviewingCount + assignedCount + onHoldCount,
+            new: newCount,
+            vetted: vettedCount,
+            interviewing: interviewingCount,
+            assigned: assignedCount,
+            on_hold: onHoldCount,
+            rejected: rejectedCount,
+          },
         };
       };
 
@@ -422,15 +532,29 @@ export async function GET(req: NextRequest) {
         const chunkSize = 500;
         let offset = 0;
         let totalCount = 0;
+        let useLegacyStageFallback = false;
 
         while (offset < 10000) {
           let q = supabase
             .from('candidates')
             .select(CANDIDATE_LIST_COLUMNS, offset === 0 ? { count: 'exact' } : undefined);
-          q = applyCandidateFilters(q, filterParams);
+          q = applyCandidateFilters(q, filterParams, useLegacyStageFallback);
           q = q.order(sortBy, { ascending: sortAscending }).range(offset, offset + chunkSize - 1);
 
-          const { data: chunk, error: chunkErr, count } = await q;
+          let { data: chunk, error: chunkErr, count } = await q;
+          if (chunkErr && !useLegacyStageFallback && isMissingRejectedEnumError(chunkErr)) {
+            useLegacyStageFallback = true;
+            let retryQ = supabase
+              .from('candidates')
+              .select(CANDIDATE_LIST_COLUMNS, offset === 0 ? { count: 'exact' } : undefined);
+            retryQ = applyCandidateFilters(retryQ, filterParams, true);
+            retryQ = retryQ.order(sortBy, { ascending: sortAscending }).range(offset, offset + chunkSize - 1);
+            const retryRes = await retryQ;
+            chunk = retryRes.data;
+            chunkErr = retryRes.error;
+            count = retryRes.count;
+          }
+
           if (chunkErr) {
             console.error('[GET /api/candidates?export=true] Supabase error:', chunkErr.message);
             return NextResponse.json(
@@ -455,63 +579,6 @@ export async function GET(req: NextRequest) {
         });
       }
 
-      // Kanban mode: fetch top 25 candidates per stage + exact count per stage
-      if (view === 'kanban') {
-        const stages = ['new', 'vetted', 'interviewing', 'assigned', 'on_hold'];
-        const stageResults = await Promise.all(
-          stages.map(async (stage) => {
-            let q = supabase
-              .from('candidates')
-              .select(CANDIDATE_LIST_COLUMNS, { count: 'exact' });
-            q = applyCandidateFilters(q, { ...filterParams, pipelineStage: stage });
-            q = q.order(sortBy, { ascending: sortAscending }).range(0, 24);
-            return q;
-          })
-        );
-
-        const firstErr = stageResults.find((r) => r.error)?.error;
-        if (firstErr) {
-          console.error('[GET /api/candidates?view=kanban] Supabase error:', firstErr.message);
-          return NextResponse.json(
-            { candidates: [], total: 0, error: firstErr.message, source: 'supabase_error' },
-            { status: 500 }
-          );
-        }
-
-        const combinedRows = stageResults.flatMap((r) => r.data || []);
-        const stageCounts: Record<string, number> = {};
-        stages.forEach((stage, i) => {
-          stageCounts[stage] = stageResults[i].count || 0;
-        });
-
-        const pageIds = combinedRows.map((r: any) => r.id).filter(Boolean);
-        let resumeIdSet = new Set<string>();
-        if (pageIds.length > 0 && hasResume !== 'no') {
-          if (hasResume === 'yes') {
-            resumeIdSet = new Set(pageIds);
-          } else {
-            const { data: resumeIds } = await supabase
-              .from('candidates')
-              .select('id')
-              .in('id', pageIds)
-              .not('resume_url', 'is', null)
-              .neq('resume_url', '');
-            resumeIdSet = new Set((resumeIds || []).map((r: any) => r.id));
-          }
-        }
-
-        const stats = includeStats ? await fetchKpiStats() : undefined;
-        const totalFiltered = Object.values(stageCounts).reduce((a, b) => a + b, 0);
-
-        return NextResponse.json({
-          candidates: combinedRows.map((r: any) => formatListCandidateRow(r, resumeIdSet, true)),
-          total: totalFiltered,
-          stageCounts,
-          stats,
-          source: 'supabase',
-        });
-      }
-
       // Standard paginated table / cards query (default 20 per page, max 100)
       const limitParam = parseInt(searchParams.get('limit') || '20', 10);
       const limit = Number.isFinite(limitParam) && limitParam > 0 ? Math.min(limitParam, 100) : 20;
@@ -520,16 +587,23 @@ export async function GET(req: NextRequest) {
       const from = (page - 1) * limit;
       const to = from + limit - 1;
 
-      let listQuery = supabase
-        .from('candidates')
-        .select(CANDIDATE_LIST_COLUMNS, { count: 'exact' });
-      listQuery = applyCandidateFilters(listQuery, filterParams);
-      listQuery = listQuery.order(sortBy, { ascending: sortAscending }).range(from, to);
+      const buildListQuery = (useLegacyFallback: boolean) => {
+        let q = supabase
+          .from('candidates')
+          .select(CANDIDATE_LIST_COLUMNS, { count: 'exact' });
+        q = applyCandidateFilters(q, filterParams, useLegacyFallback);
+        return q.order(sortBy, { ascending: sortAscending }).range(from, to);
+      };
 
-      const [listResult, stats] = await Promise.all([
-        listQuery,
-        includeStats ? fetchKpiStats() : Promise.resolve(undefined),
+      const [initialListResult, dashboardStats] = await Promise.all([
+        buildListQuery(false),
+        includeStats ? fetchDashboardStats() : Promise.resolve(undefined),
       ]);
+
+      let listResult = initialListResult;
+      if (listResult.error && isMissingRejectedEnumError(listResult.error)) {
+        listResult = await buildListQuery(true);
+      }
 
       if (listResult.error) {
         console.error('[GET /api/candidates] Supabase query error:', listResult.error.message, listResult.error.code);
@@ -572,7 +646,8 @@ export async function GET(req: NextRequest) {
         total,
         page,
         limit,
-        stats,
+        stats: dashboardStats?.stats,
+        stageStats: dashboardStats?.stageStats,
         source: 'supabase',
       });
     } catch (err: any) {
@@ -602,6 +677,8 @@ export async function GET(req: NextRequest) {
   }
   if (pipelineStage && pipelineStage !== 'all') {
     candidates = candidates.filter((c) => c.pipeline_stage === pipelineStage);
+  } else {
+    candidates = candidates.filter((c) => c.pipeline_stage !== 'rejected');
   }
   if (englishProficiency && englishProficiency !== 'all') {
     candidates = candidates.filter((c) => c.english_proficiency === englishProficiency);
@@ -649,20 +726,32 @@ export async function GET(req: NextRequest) {
   }
 
   const total = candidates.length;
+  const activeMockCandidates = INITIAL_MOCK_CANDIDATES.filter((c) => c.pipeline_stage !== 'rejected');
   const stats = includeStats
     ? {
-        total: INITIAL_MOCK_CANDIDATES.length,
-        availableNow: INITIAL_MOCK_CANDIDATES.filter((c) => c.availability_status === 'available_now').length,
-        withVideo: INITIAL_MOCK_CANDIDATES.filter((c) => Boolean(c.video_pitch_url?.trim())).length,
-        withResume: INITIAL_MOCK_CANDIDATES.filter((c) => Boolean(c.resume_url?.trim())).length,
-        aiEngineers: INITIAL_MOCK_CANDIDATES.filter((c) => c.primary_role === 'ai_engineer').length,
-        mobileAndArchs: INITIAL_MOCK_CANDIDATES.filter(
+        total: activeMockCandidates.length,
+        availableNow: activeMockCandidates.filter((c) => c.availability_status === 'available_now').length,
+        withVideo: activeMockCandidates.filter((c) => Boolean(c.video_pitch_url?.trim())).length,
+        withResume: activeMockCandidates.filter((c) => Boolean(c.resume_url?.trim())).length,
+        aiEngineers: activeMockCandidates.filter((c) => c.primary_role === 'ai_engineer').length,
+        mobileAndArchs: activeMockCandidates.filter(
           (c) => c.primary_role === 'mobile_app_developer' || c.primary_role === 'solutions_architect'
         ).length,
       }
     : undefined;
+  const stageStats = includeStats
+    ? {
+        activeTotal: activeMockCandidates.length,
+        new: INITIAL_MOCK_CANDIDATES.filter((c) => c.pipeline_stage === 'new').length,
+        vetted: INITIAL_MOCK_CANDIDATES.filter((c) => c.pipeline_stage === 'vetted').length,
+        interviewing: INITIAL_MOCK_CANDIDATES.filter((c) => c.pipeline_stage === 'interviewing').length,
+        assigned: INITIAL_MOCK_CANDIDATES.filter((c) => c.pipeline_stage === 'assigned').length,
+        on_hold: INITIAL_MOCK_CANDIDATES.filter((c) => c.pipeline_stage === 'on_hold').length,
+        rejected: INITIAL_MOCK_CANDIDATES.filter((c) => c.pipeline_stage === 'rejected').length,
+      }
+    : undefined;
 
-  if (!isExport && view !== 'kanban') {
+  if (!isExport) {
     const limitParam = parseInt(searchParams.get('limit') || '20', 10);
     const limit = Number.isFinite(limitParam) && limitParam > 0 ? Math.min(limitParam, 100) : 20;
     const pageParam = parseInt(searchParams.get('page') || '1', 10);
@@ -671,7 +760,7 @@ export async function GET(req: NextRequest) {
     candidates = candidates.slice(from, from + limit);
   }
 
-  return NextResponse.json({ candidates, total, stats, source: 'demo_memory' });
+  return NextResponse.json({ candidates, total, stats, stageStats, source: 'demo_memory' });
 }
 
 export async function POST(req: NextRequest) {

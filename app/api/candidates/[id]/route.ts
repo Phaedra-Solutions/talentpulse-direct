@@ -1,18 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseServerClient, isServerSupabaseConfigured } from '@/lib/supabase/server';
-import { Candidate } from '@/types/candidate';
+import { Candidate, candidateStagePatchSchema } from '@/types/candidate';
 import { requireAdminAuth } from '@/lib/auth/server-auth';
 import { canAccessCandidatePipeline } from '@/lib/auth/permissions';
 
 function fromDbCandidate(c: any, sanitizeLargeResumeBlob = false): Candidate {
   let role = c.primary_role;
   let notes = c.internal_notes || '';
+  let stage = c.pipeline_stage;
 
   const roleMatch = notes.match(/\[Role:\s*([\w-]+)\]/);
   if (roleMatch && roleMatch[1]) {
     role = roleMatch[1];
   } else if (role === 'software_engineer') {
     role = 'full_stack';
+  }
+
+  if (notes.includes('[Stage: rejected]')) {
+    stage = 'rejected';
+    notes = notes.replace(/\[Stage:\s*rejected\]\s*/g, '').trim();
   }
 
   let resumeUrl = c.resume_url;
@@ -23,6 +29,7 @@ function fromDbCandidate(c: any, sanitizeLargeResumeBlob = false): Candidate {
   return {
     ...c,
     primary_role: role,
+    pipeline_stage: stage,
     internal_notes: notes,
     resume_url: resumeUrl,
   };
@@ -66,22 +73,52 @@ export async function PATCH(
     if (auth.errorResponse) return auth.errorResponse;
 
     const { id } = await params;
-    const updates = await req.json();
-    if (typeof updates.resume_url === 'string' && (updates.resume_url.startsWith('attached://') || updates.resume_url === 'data:application/pdf;base64,[stored]')) {
-      delete updates.resume_url;
+    const body = await req.json();
+    const parsed = candidateStagePatchSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: parsed.error.issues[0]?.message || 'Invalid pipeline stage or notes payload' },
+        { status: 400 }
+      );
     }
+
+    const cleanNotes = (parsed.data.internal_notes ?? '')
+      .replace(/\[Stage:\s*rejected\]\s*/g, '')
+      .trim();
+    const targetStage = parsed.data.pipeline_stage;
 
     const supabase = getSupabaseServerClient();
     if (supabase && isServerSupabaseConfigured) {
-      const { data, error } = await supabase
+      let { data, error } = await supabase
         .from('candidates')
         .update({
-          ...updates,
+          pipeline_stage: targetStage,
+          internal_notes: cleanNotes,
           updated_at: new Date().toISOString(),
         })
         .eq('id', id)
         .select()
         .single();
+
+      // Graceful fallback if DB enum migration for 'rejected' has not yet run
+      if (
+        error &&
+        targetStage === 'rejected' &&
+        (error.code === '22P02' || String(error.message || '').includes('invalid input value for enum'))
+      ) {
+        const retry = await supabase
+          .from('candidates')
+          .update({
+            pipeline_stage: 'on_hold',
+            internal_notes: cleanNotes ? `[Stage: rejected] ${cleanNotes}` : '[Stage: rejected]',
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', id)
+          .select()
+          .single();
+        data = retry.data;
+        error = retry.error;
+      }
 
       if (error) {
         return NextResponse.json({ error: error.message }, { status: 400 });
@@ -92,7 +129,8 @@ export async function PATCH(
     return NextResponse.json({
       candidate: {
         id,
-        ...updates,
+        pipeline_stage: targetStage,
+        internal_notes: cleanNotes,
         updated_at: new Date().toISOString(),
       },
       source: 'demo_memory',

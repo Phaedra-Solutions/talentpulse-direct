@@ -4,7 +4,7 @@ import {
   updateHireRequestStatusAndNotes,
   deleteHireRequest,
 } from '@/lib/hire-request-store';
-import { HireRequestStatus } from '@/types/hire-request';
+import { hireRequestPatchSchema, HireRequestStatus } from '@/types/hire-request';
 import { requireAdminAuth } from '@/lib/auth/server-auth';
 import { canAccessHireRequests } from '@/lib/auth/permissions';
 
@@ -48,24 +48,22 @@ export async function PATCH(
 
     const { id } = await params;
     const body = await request.json();
-    const { status, offline_notes } = body;
-
-    const validStatuses: HireRequestStatus[] = [
-      'new',
-      'contacted',
-      'negotiating',
-      'contract_signed',
-      'closed',
-    ];
-
-    if (status && !validStatuses.includes(status)) {
+    const parsed = hireRequestPatchSchema.safeParse(body);
+    if (!parsed.success) {
       return NextResponse.json(
-        { success: false, error: 'Invalid hire request status' },
+        {
+          success: false,
+          error: parsed.error.issues[0]?.message || 'Invalid hire request update payload',
+        },
         { status: 400 }
       );
     }
 
-    const updated = await updateHireRequestStatusAndNotes(id, status, offline_notes);
+    const updated = await updateHireRequestStatusAndNotes(
+      id,
+      parsed.data.status as HireRequestStatus,
+      parsed.data.offline_notes
+    );
     if (!updated) {
       return NextResponse.json(
         { success: false, error: 'Hire request not found' },

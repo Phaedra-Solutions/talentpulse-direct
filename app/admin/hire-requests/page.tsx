@@ -5,7 +5,9 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
   HireRequest,
+  HireRequestFilterStatus,
   HireRequestStatus,
+  HIRE_REQUEST_LIMITS,
   getHireRequestStatusMeta,
 } from '@/types/hire-request';
 import {
@@ -41,6 +43,7 @@ import {
 
 interface HireStats {
   total: number;
+  activeCount: number;
   newCount: number;
   contactedCount: number;
   negotiatingCount: number;
@@ -76,6 +79,7 @@ export default function AdminHireRequestsPage() {
   const [pageSize, setPageSize] = useState(25);
   const [stats, setStats] = useState<HireStats>({
     total: 0,
+    activeCount: 0,
     newCount: 0,
     contactedCount: 0,
     negotiatingCount: 0,
@@ -88,10 +92,10 @@ export default function AdminHireRequestsPage() {
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
-  // Search & Filter
+  // Search & Filter (defaults to 'active', excluding closed/archived until explicitly selected)
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | HireRequestStatus>('all');
+  const [statusFilter, setStatusFilter] = useState<HireRequestFilterStatus>('active');
 
   // Selected request for offline drawer/modal
   const [activeRequest, setActiveRequest] = useState<HireRequest | null>(null);
@@ -136,7 +140,7 @@ export default function AdminHireRequestsPage() {
     async (
       pageNum: number,
       limitNum: number,
-      statusVal: 'all' | HireRequestStatus,
+      statusVal: HireRequestFilterStatus,
       searchVal: string,
       withStats = true
     ) => {
@@ -543,18 +547,18 @@ export default function AdminHireRequestsPage() {
           <button
             type="button"
             onClick={() => {
-              setStatusFilter('all');
+              setStatusFilter('active');
               setPage(1);
             }}
             className={`text-left bg-white border-2 border-[#111113] p-4 shadow-[2px_2px_0px_0px_#111113] transition hover:bg-[#F8F7F4] ${
-              statusFilter === 'all' ? 'ring-2 ring-[#FF4D00]' : ''
+              statusFilter === 'active' ? 'ring-2 ring-[#FF4D00]' : ''
             }`}
           >
             <span className="font-mono text-[10px] text-[#111113]/60 uppercase block">
-              Total Inquiries
+              Active Inquiries
             </span>
             <span className="font-syne font-extrabold text-2xl text-[#111113]">
-              {stats.total}
+              {stats.activeCount}
             </span>
           </button>
 
@@ -649,12 +653,13 @@ export default function AdminHireRequestsPage() {
             <select
               value={statusFilter}
               onChange={(e) => {
-                setStatusFilter(e.target.value as any);
+                setStatusFilter(e.target.value as HireRequestFilterStatus);
                 setPage(1);
               }}
+              aria-label="Filter hire requests by status"
               className="font-mono text-xs px-3 py-2 border-2 border-[#111113] bg-[#F8F7F4] text-[#111113] focus:outline-hidden focus:border-[#FF4D00]"
             >
-              <option value="all">All Statuses ({stats.total})</option>
+              <option value="active">Active Inquiries ({stats.activeCount})</option>
               <option value="new">New ({stats.newCount})</option>
               <option value="contacted">Contacted ({stats.contactedCount})</option>
               <option value="negotiating">In Negotiation ({stats.negotiatingCount})</option>
@@ -674,27 +679,41 @@ export default function AdminHireRequestsPage() {
           ) : requests.length === 0 ? (
             <div className="p-12 text-center font-mono text-xs text-[#111113]/60 space-y-3">
               <p>
-                {debouncedSearch.trim() || statusFilter !== 'all'
-                  ? 'No client hire requests matched your current search or filter.'
+                {debouncedSearch.trim() || statusFilter !== 'active'
+                  ? statusFilter === 'closed'
+                    ? 'No closed or archived hire requests matched your filter.'
+                    : 'No client hire requests matched your current search or filter.'
+                  : stats.closedCount > 0
+                  ? 'No active client hire requests right now. Select "Closed / Archived" from the status dropdown to view closed requests.'
                   : 'No client hire requests recorded yet.'}
               </p>
-              {(debouncedSearch.trim() || statusFilter !== 'all') && (
+              {(debouncedSearch.trim() || statusFilter !== 'active') && (
                 <button
                   type="button"
                   onClick={() => {
                     setSearchQuery('');
-                    setStatusFilter('all');
+                    setStatusFilter('active');
                     setPage(1);
                   }}
                   className="btn-brutalist text-xs py-1.5 px-3"
                 >
-                  Clear Filters
+                  Back to Active Requests
                 </button>
               )}
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left font-mono text-xs border-collapse">
+            <div className="overflow-x-auto w-full">
+              <table className="w-full min-w-[980px] table-fixed text-left font-mono text-xs border-collapse">
+                <colgroup>
+                  <col className="w-[144px]" />
+                  <col className="w-[220px]" />
+                  <col className="w-[160px]" />
+                  <col className="w-[130px]" />
+                  <col className="w-[125px]" />
+                  <col className="w-[185px]" />
+                  <col className="w-[175px]" />
+                  <col className="w-[110px]" />
+                </colgroup>
                 <thead>
                   <tr className="bg-[#111113] text-[#F8F7F4] uppercase text-[11px] tracking-wider border-b-2 border-[#111113]">
                     <th className="p-3">Status</th>
@@ -715,85 +734,105 @@ export default function AdminHireRequestsPage() {
                     return (
                       <tr
                         key={req.id}
-                        className={`hover:bg-[#FF4D00]/5 transition-colors ${
+                        className={`align-top hover:bg-[#FF4D00]/5 transition-colors ${
                           isSelected ? 'bg-orange-50/80' : ''
                         }`}
                       >
-                        <td className="p-3 whitespace-nowrap">
+                        <td className="p-3">
                           <span
-                            className={`inline-block px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider border ${meta.color}`}
+                            className={`inline-block max-w-full truncate px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider border ${meta.color}`}
+                            title={meta.label}
                           >
                             {meta.label}
                           </span>
                         </td>
 
-                        <td className="p-3">
-                          <div className="font-bold text-[#111113] flex items-center gap-1.5">
+                        <td className="p-3 min-w-0">
+                          <div
+                            className="font-bold text-[#111113] flex items-center gap-1.5 min-w-0"
+                            title={req.business_name}
+                          >
                             <Building2 className="w-3.5 h-3.5 text-[#111113]/60 shrink-0" />
-                            <span>{req.business_name}</span>
+                            <span className="truncate block min-w-0">{req.business_name}</span>
                           </div>
-                          <div className="text-[11px] text-[#111113]/70 flex items-center gap-1.5 mt-0.5">
-                            <span>{req.client_name}</span>
-                            <span>•</span>
-                            <span className="text-[#111113]/60">{req.country}</span>
+                          <div
+                            className="text-[11px] text-[#111113]/70 truncate mt-0.5"
+                            title={`${req.client_name} • ${req.country}`}
+                          >
+                            {req.client_name} &bull; {req.country}
                           </div>
                         </td>
 
-                        <td className="p-3">
-                          <span className="font-bold text-[#111113]">{req.role_title}</span>
+                        <td className="p-3 min-w-0">
+                          <span
+                            className="font-bold text-[#111113] line-clamp-2 break-words [overflow-wrap:anywhere]"
+                            title={req.role_title}
+                          >
+                            {req.role_title}
+                          </span>
                         </td>
 
-                        <td className="p-3 whitespace-nowrap">
-                          <span className="font-bold text-[#FF4D00]">{req.expected_cost}</span>
+                        <td className="p-3 min-w-0">
+                          <span
+                            className="font-bold text-[#FF4D00] truncate block"
+                            title={req.expected_cost}
+                          >
+                            {req.expected_cost}
+                          </span>
                         </td>
 
-                        <td className="p-3 whitespace-nowrap text-[#111113]/80">
-                          {req.timeline_to_start}
+                        <td className="p-3 min-w-0 text-[#111113]/80">
+                          <span className="truncate block" title={req.timeline_to_start}>
+                            {req.timeline_to_start}
+                          </span>
                         </td>
 
-                        <td className="p-3 whitespace-nowrap">
-                          <div className="flex flex-col gap-0.5">
+                        <td className="p-3 min-w-0">
+                          <div className="flex flex-col gap-0.5 min-w-0">
                             <a
                               href={`tel:${req.client_phone}`}
-                              className="inline-flex items-center gap-1 text-[#111113] hover:text-[#FF4D00] transition-colors"
-                              title="Click to dial phone"
+                              className="inline-flex items-center gap-1 text-[#111113] hover:text-[#FF4D00] transition-colors min-w-0"
+                              title={`Call ${req.client_phone}`}
                             >
-                              <Phone className="w-3 h-3 text-[#111113]/60" />
-                              <span>{req.client_phone}</span>
+                              <Phone className="w-3 h-3 text-[#111113]/60 shrink-0" />
+                              <span className="truncate">{req.client_phone}</span>
                             </a>
                             <a
                               href={`mailto:${req.client_email}?subject=Contract%20Engagement%20Inquiry%20-%20${encodeURIComponent(req.role_title)}`}
-                              className="inline-flex items-center gap-1 text-[11px] text-[#111113]/70 hover:text-[#FF4D00] transition-colors truncate max-w-[180px]"
-                              title="Click to send email"
+                              className="inline-flex items-center gap-1 text-[11px] text-[#111113]/70 hover:text-[#FF4D00] transition-colors min-w-0"
+                              title={`Email ${req.client_email}`}
                             >
-                              <Mail className="w-3 h-3 text-[#111113]/40" />
+                              <Mail className="w-3 h-3 text-[#111113]/40 shrink-0" />
                               <span className="truncate">{req.client_email}</span>
                             </a>
                           </div>
                         </td>
 
-                        <td className="p-3 max-w-xs">
-                          <p className="text-[11px] text-[#111113]/70 truncate" title={req.offline_notes}>
+                        <td className="p-3 min-w-0">
+                          <p
+                            className="text-[11px] text-[#111113]/70 line-clamp-2 break-words [overflow-wrap:anywhere]"
+                            title={req.offline_notes || 'No offline notes logged yet'}
+                          >
                             {req.offline_notes || 'No offline notes logged yet'}
                           </p>
                         </td>
 
-                        <td className="p-3 text-right whitespace-nowrap">
+                        <td className="p-3 text-right">
                           <div className="flex items-center justify-end gap-1.5">
                             <button
                               type="button"
                               onClick={() => handleOpenReview(req)}
-                              className="btn-brutalist btn-brutalist-primary text-[10px] py-1 px-2.5 flex items-center gap-1"
+                              className="btn-brutalist btn-brutalist-primary text-[10px] py-1 px-2.5 flex items-center gap-1 shrink-0"
                               title="Review request details and record offline call notes"
                             >
-                              <Edit3 className="w-3 h-3" />
+                              <Edit3 className="w-3 h-3 shrink-0" />
                               <span>Review</span>
                             </button>
 
                             <button
                               type="button"
                               onClick={() => setConfirmDeleteItem(req)}
-                              className="p-1.5 border border-[#111113] text-[#111113]/70 hover:text-red-600 hover:border-red-600 transition-colors"
+                              className="p-1.5 border border-[#111113] text-[#111113]/70 hover:text-red-600 hover:border-red-600 transition-colors shrink-0"
                               title="Delete request"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
@@ -889,11 +928,11 @@ export default function AdminHireRequestsPage() {
                     </span>
                     <span className="text-[#111113]/60 truncate">{activeRequest.id}</span>
                   </div>
-                  <h2 className="font-syne font-bold text-xl sm:text-2xl text-[#111113] mt-1 break-words">
+                  <h2 className="font-syne font-bold text-xl sm:text-2xl text-[#111113] mt-1 break-words [overflow-wrap:anywhere]">
                     {activeRequest.business_name}
                   </h2>
-                  <p className="font-sans text-xs text-[#111113]/70">
-                    Contact: <strong>{activeRequest.client_name}</strong> • Region: <strong>{activeRequest.country}</strong>
+                  <p className="font-sans text-xs text-[#111113]/70 break-words [overflow-wrap:anywhere]">
+                    Contact: <strong>{activeRequest.client_name}</strong> &bull; Region: <strong>{activeRequest.country}</strong>
                   </p>
                 </div>
 
@@ -907,22 +946,22 @@ export default function AdminHireRequestsPage() {
               </div>
 
               <div className="grid sm:grid-cols-2 gap-3 font-mono text-xs">
-                <div className="bg-white border-2 border-[#111113] p-3 space-y-1">
+                <div className="bg-white border-2 border-[#111113] p-3 space-y-1 min-w-0">
                   <span className="text-[10px] text-[#111113]/60 uppercase block">Requested Role</span>
-                  <strong className="text-sm text-[#111113]">{activeRequest.role_title}</strong>
+                  <strong className="text-sm text-[#111113] break-words block">{activeRequest.role_title}</strong>
                 </div>
 
-                <div className="bg-white border-2 border-[#111113] p-3 space-y-1">
+                <div className="bg-white border-2 border-[#111113] p-3 space-y-1 min-w-0">
                   <span className="text-[10px] text-[#111113]/60 uppercase block">Expected Cost / Budget</span>
-                  <strong className="text-sm text-[#FF4D00]">{activeRequest.expected_cost}</strong>
+                  <strong className="text-sm text-[#FF4D00] break-words [overflow-wrap:anywhere] block">{activeRequest.expected_cost}</strong>
                 </div>
 
-                <div className="bg-white border-2 border-[#111113] p-3 space-y-1">
+                <div className="bg-white border-2 border-[#111113] p-3 space-y-1 min-w-0">
                   <span className="text-[10px] text-[#111113]/60 uppercase block">Timeline to Start</span>
-                  <strong className="text-sm text-[#111113]">{activeRequest.timeline_to_start}</strong>
+                  <strong className="text-sm text-[#111113] break-words block">{activeRequest.timeline_to_start}</strong>
                 </div>
 
-                <div className="bg-white border-2 border-[#111113] p-3 space-y-1">
+                <div className="bg-white border-2 border-[#111113] p-3 space-y-1 min-w-0">
                   <span className="text-[10px] text-[#111113]/60 uppercase block">Submission Date</span>
                   <strong suppressHydrationWarning className="text-xs text-[#111113]">
                     {new Date(activeRequest.created_at).toLocaleString()}
@@ -937,8 +976,8 @@ export default function AdminHireRequestsPage() {
                 </div>
 
                 <div className="grid sm:grid-cols-2 gap-3">
-                  <div className="flex items-center justify-between p-2.5 border border-[#111113]/30 bg-[#F8F7F4]">
-                    <div className="flex items-center gap-2 truncate">
+                  <div className="flex items-center justify-between p-2.5 border border-[#111113]/30 bg-[#F8F7F4] min-w-0">
+                    <div className="flex items-center gap-2 truncate min-w-0">
                       <Phone className="w-4 h-4 text-[#FF4D00] shrink-0" />
                       <a href={`tel:${activeRequest.client_phone}`} className="font-bold text-[#111113] hover:underline truncate">
                         {activeRequest.client_phone}
@@ -947,15 +986,15 @@ export default function AdminHireRequestsPage() {
                     <button
                       type="button"
                       onClick={() => copyToClipboard(activeRequest.client_phone, 'phone')}
-                      className="p-1 hover:text-[#FF4D00] transition-colors ml-2"
+                      className="p-1 hover:text-[#FF4D00] transition-colors ml-2 shrink-0"
                       title="Copy phone"
                     >
                       {copiedField === 'phone' ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
                     </button>
                   </div>
 
-                  <div className="flex items-center justify-between p-2.5 border border-[#111113]/30 bg-[#F8F7F4]">
-                    <div className="flex items-center gap-2 truncate">
+                  <div className="flex items-center justify-between p-2.5 border border-[#111113]/30 bg-[#F8F7F4] min-w-0">
+                    <div className="flex items-center gap-2 truncate min-w-0">
                       <Mail className="w-4 h-4 text-[#FF4D00] shrink-0" />
                       <a href={`mailto:${activeRequest.client_email}`} className="font-bold text-[#111113] hover:underline truncate">
                         {activeRequest.client_email}
@@ -964,7 +1003,7 @@ export default function AdminHireRequestsPage() {
                     <button
                       type="button"
                       onClick={() => copyToClipboard(activeRequest.client_email, 'email')}
-                      className="p-1 hover:text-[#FF4D00] transition-colors ml-2"
+                      className="p-1 hover:text-[#FF4D00] transition-colors ml-2 shrink-0"
                       title="Copy email"
                     >
                       {copiedField === 'email' ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
@@ -983,7 +1022,7 @@ export default function AdminHireRequestsPage() {
                       Loading contract scope details...
                     </span>
                   ) : (
-                    <p className="font-sans text-xs text-[#111113] whitespace-pre-wrap leading-relaxed">
+                    <p className="font-sans text-xs text-[#111113] whitespace-pre-wrap break-words [overflow-wrap:anywhere] leading-relaxed">
                       {activeRequest.project_scope}
                     </p>
                   )}
@@ -1025,11 +1064,15 @@ export default function AdminHireRequestsPage() {
                 </div>
 
                 <div>
-                  <label className="block font-mono text-[11px] uppercase font-bold text-[#111113] mb-1">
-                    Internal Recruiter Notes (Call Logs, Rates Agreed, Candidates Pitched):
+                  <label className="block font-mono text-[11px] uppercase font-bold text-[#111113] mb-1 flex items-center justify-between gap-2">
+                    <span>Internal Recruiter Notes (Call Logs, Rates Agreed, Candidates Pitched):</span>
+                    <span className="text-[10px] font-normal text-[#111113]/60">
+                      {editNotes.length.toLocaleString()} / {HIRE_REQUEST_LIMITS.OFFLINE_NOTES_MAX.toLocaleString()}
+                    </span>
                   </label>
                   <textarea
                     value={editNotes}
+                    maxLength={HIRE_REQUEST_LIMITS.OFFLINE_NOTES_MAX}
                     onChange={(e) => setEditNotes(e.target.value)}
                     rows={4}
                     placeholder="Log offline call notes, agreed rates, client feedback, candidate profiles shared, or interview dates..."
